@@ -13,24 +13,15 @@ import { Customer } from "@shared/schema";
 import { UserPlus } from "lucide-react";
 import { SearchInput } from "@/components/ui/search-input";
 import { useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { CustomerForm } from "@/components/customers/customer-form";
 
 export default function CustomersPage() {
-  const { data: customers = [] } = useQuery<Customer[]>({
+  const { data: customers } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
   });
 
   const [searchTerm, setSearchTerm] = useState("");
 
-  const filteredCustomers = customers.filter((customer) => {
+  const filteredCustomers = customers?.filter((customer) => {
     const searchLower = searchTerm.toLowerCase();
     return (
       customer.name.toLowerCase().includes(searchLower) ||
@@ -45,23 +36,10 @@ export default function CustomersPage() {
       <div className="space-y-8">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">العملاء</h1>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button>
-                <UserPlus className="h-4 w-4 ml-2" />
-                إضافة عميل
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>إضافة عميل جديد</DialogTitle>
-                <DialogDescription>
-                  أدخل تفاصيل العميل الجديد
-                </DialogDescription>
-              </DialogHeader>
-              <CustomerForm />
-            </DialogContent>
-          </Dialog>
+          <Button>
+            <UserPlus className="h-4 w-4 ml-2" />
+            إضافة عميل
+          </Button>
         </div>
 
         <div className="max-w-sm">
@@ -83,15 +61,15 @@ export default function CustomersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredCustomers.map((customer) => (
+              {filteredCustomers?.map((customer) => (
                 <TableRow key={customer.id}>
                   <TableCell>{customer.name}</TableCell>
                   <TableCell>{customer.phone}</TableCell>
-                  <TableCell>{customer.email || '-'}</TableCell>
-                  <TableCell>{customer.notes || '-'}</TableCell>
+                  <TableCell>{customer.email}</TableCell>
+                  <TableCell>{customer.notes}</TableCell>
                 </TableRow>
               ))}
-              {filteredCustomers.length === 0 && (
+              {filteredCustomers?.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                     لا توجد نتائج للبحث
