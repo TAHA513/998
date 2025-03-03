@@ -1,957 +1,243 @@
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Button } from "@/components/ui/button";
-import { Card as CardComponent, CardContent, CardHeader, CardTitle, CardProps as CardComponentProps, CardDescription } from "@/components/ui/card";
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { MessageSquare, Upload, Plus, Building2, Settings as SettingsIcon, Paintbrush, Database, Download } from "lucide-react";
-import { SiGooglecalendar, SiFacebook, SiInstagram, SiSnapchat } from "react-icons/si";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useState, useEffect } from "react";
-import { updateThemeColors, updateThemeFonts, loadThemeSettings } from "@/lib/theme";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  getStoreSettings,
-  setStoreSettings,
-  getSocialAccounts,
-  addSocialAccount,
-  getWhatsAppSettings,
-  setWhatsAppSettings,
-  getGoogleCalendarSettings,
-  setGoogleCalendarSettings,
-  getSocialMediaSettings,
-  setSocialMediaSettings,
-  type StoreSettings,
-  type SocialMediaAccount,
-  type WhatsAppSettings,
-  type GoogleCalendarSettings,
-  type SocialMediaSettings
-} from "@/lib/storage";
-import { DatabaseConnectionForm } from "@/components/settings/database-connection-form";
-import type { DatabaseConnection } from "@shared/schema";
-import { motion } from "framer-motion";
-import { Table, TableBody, TableCell, TableHeader, TableHead, TableRow } from "@/components/ui/table";
-import { Separator } from "@/components/ui/separator";
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import { DatePickerWithRange } from "@/components/ui/date-range-picker";
+import { useState } from "react";
+import { FileSpreadsheet, BarChart3, Package } from "lucide-react";
+import * as XLSX from 'xlsx';
+import { format } from "date-fns";
+import { ar } from "date-fns/locale";
+import { useQuery } from "@tanstack/react-query";
+import type { Product, Invoice } from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
+import { getStoreSettings } from "@/lib/storage";
 
-const socialMediaAccountSchema = z.object({
-  platform: z.enum(['facebook', 'instagram', 'snapchat'], {
-    required_error: "يرجى اختيار المنصة"
-  }),
-  username: z.string().min(1, "اسم المستخدم مطلوب").max(50, "اسم المستخدم طويل جداً"),
-  password: z.string().min(6, "كلمة المرور يجب أن تكون 6 أحرف على الأقل").max(50, "كلمة المرور طويلة جداً"),
-});
-
-type SocialMediaAccountFormData = z.infer<typeof socialMediaAccountSchema>;
-
-const whatsappSchema = z.object({
-  WHATSAPP_API_TOKEN: z.string().min(1, "رمز الوصول مطلوب"),
-  WHATSAPP_BUSINESS_PHONE_NUMBER: z.string().min(1, "رقم الهاتف مطلوب"),
-});
-
-const googleCalendarSchema = z.object({
-  GOOGLE_CLIENT_ID: z.string().min(1, "معرف العميل مطلوب"),
-  GOOGLE_CLIENT_SECRET: z.string().min(1, "الرمز السري مطلوب"),
-});
-
-const socialMediaSchema = z.object({
-  FACEBOOK_APP_ID: z.string().min(1, "معرف التطبيق مطلوب"),
-  FACEBOOK_APP_SECRET: z.string().min(1, "الرمز السري مطلوب"),
-  INSTAGRAM_ACCESS_TOKEN: z.string().min(1, "رمز الوصول مطلوب"),
-});
-
-const currencySettingsSchema = z.object({
-  defaultCurrency: z.enum(['USD', 'IQD'], {
-    required_error: "يرجى اختيار العملة الافتراضية"
-  }),
-  usdToIqdRate: z.number()
-    .min(1, "يجب أن يكون سعر الصرف أكبر من 0")
-    .max(999999, "سعر الصرف غير صالح"),
-});
-
-type CurrencySettings = z.infer<typeof currencySettingsSchema>;
-
-const CustomCard = ({ className, ...props }: CardComponentProps) => (
-  <CardComponent className={cn("w-full", className)} {...props} />
-);
-
-const colorOptions = [
-  { type: 'solid', color: "#0ea5e9", name: "أزرق" },
-  { type: 'solid', color: "#10b981", name: "أخضر" },
-  { type: 'solid', color: "#8b5cf6", name: "بنفسجي" },
-  { type: 'solid', color: "#ef4444", name: "أحمر" },
-  { type: 'solid', color: "#f59e0b", name: "برتقالي" },
-  { type: 'gradient', colors: ["#00c6ff", "#0072ff"], name: "تدرج أزرق" },
-  { type: 'gradient', colors: ["#11998e", "#38ef7d"], name: "تدرج أخضر" },
-  { type: 'gradient', colors: ["#fc466b", "#3f5efb"], name: "تدرج وردي" },
-  { type: 'gradient', colors: ["#f12711", "#f5af19"], name: "تدرج برتقالي" },
-  { type: 'gradient', colors: ["#8e2de2", "#4a00e0"], name: "تدرج بنفسجي" },
-];
-
-const createGradient = (color1: string, color2: string) => `linear-gradient(to right, ${color1}, ${color2})`;
-
-async function generateBackup() {
-  try {
-    const response = await fetch('/api/backup/generate', {
-      method: 'POST',
-    });
-
-    if (!response.ok) throw new Error('فشل إنشاء النسخة الاحتياطية');
-
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `backup-${new Date().toISOString().split('T')[0]}.zip`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-
-    return true;
-  } catch (error) {
-    console.error('Error generating backup:', error);
-    return false;
-  }
-}
-
-export default function SettingsPage() {
+export default function ReportsPage() {
   const { toast } = useToast();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const queryClient = useQueryClient();
+  const [dateRange, setDateRange] = useState<{
+    from: Date;
+    to: Date;
+  } | undefined>();
 
-  // Load theme settings on mount
-  useEffect(() => {
-    loadThemeSettings();
-  }, []);
-
-  // Queries
-  const { data: storeSettings } = useQuery({
-    queryKey: ['storeSettings'],
-    queryFn: getStoreSettings,
+  const { data: products } = useQuery<Product[]>({
+    queryKey: ["/api/products"],
   });
 
-  const { data: socialAccounts } = useQuery({
-    queryKey: ['socialAccounts'],
-    queryFn: getSocialAccounts,
+  const { data: invoices } = useQuery<Invoice[]>({
+    queryKey: ["/api/invoices"],
   });
 
-  // Forms
-  const whatsappForm = useForm<WhatsAppSettings>({
-    resolver: zodResolver(whatsappSchema),
-    defaultValues: getWhatsAppSettings(),
-  });
+  const storeSettings = getStoreSettings();
+  const defaultCurrency = storeSettings.currencySettings?.defaultCurrency || 'USD';
+  const secondaryCurrency = storeSettings.currencySettings?.secondaryCurrency || 'JOD'; // Added secondary currency
 
-  const googleCalendarForm = useForm<GoogleCalendarSettings>({
-    resolver: zodResolver(googleCalendarSchema),
-    defaultValues: getGoogleCalendarSettings(),
-  });
-
-  const socialMediaForm = useForm<SocialMediaSettings>({
-    resolver: zodResolver(socialMediaSchema),
-    defaultValues: getSocialMediaSettings(),
-  });
-
-  const currencyForm = useForm<CurrencySettings>({
-    resolver: zodResolver(currencySettingsSchema),
-    defaultValues: {
-      defaultCurrency: 'USD',
-      usdToIqdRate: 1460, // Default exchange rate
-    }
-  });
-
-  // Mutations
-  const storeSettingsMutation = useMutation({
-    mutationFn: async (data: {
-      storeName?: string;
-      storeLogo?: string;
-      primary?: string | { gradient: string[] };
-      fontSize?: string;
-      fontFamily?: string;
-      currencySettings?: CurrencySettings;
-    }) => {
-      // Update store settings
-      if (data.storeName !== undefined || data.storeLogo !== undefined) {
-        const newSettings = {
-          ...(data.storeName !== undefined && { storeName: data.storeName }),
-          ...(data.storeLogo !== undefined && { storeLogo: data.storeLogo }),
-        };
-        setStoreSettings(newSettings);
-      }
-
-      // Handle color changes
-      if (data.primary) {
-        updateThemeColors(data.primary);
-      }
-
-      // Handle font changes
-      if (data.fontSize || data.fontFamily) {
-        updateThemeFonts(
-          data.fontSize || localStorage.getItem('theme-font-size') || 'medium',
-          data.fontFamily || localStorage.getItem('theme-font-family') || 'tajawal'
-        );
-      }
-      if (data.currencySettings) {
-        setStoreSettings({ ...storeSettings, currencySettings: data.currencySettings });
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['storeSettings'] });
-      toast({
-        title: "تم حفظ الإعدادات",
-        description: "تم تحديث الإعدادات بنجاح",
-      });
-    },
-  });
-
-  const accountMutation = useMutation({
-    mutationFn: (data: SocialMediaAccountFormData) => {
-      const newAccount = addSocialAccount(data);
-      return newAccount;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['socialAccounts'] });
-      toast({
-        title: "تم بنجاح",
-        description: "تم إضافة الحساب بنجاح",
-      });
-      form.reset();
-      setIsDialogOpen(false);
-    },
-  });
-
-  const form = useForm<SocialMediaAccountFormData>({
-    resolver: zodResolver(socialMediaAccountSchema),
-    defaultValues: {
-      platform: undefined,
-      username: '',
-      password: '',
-    },
-  });
-
-  const onSubmit = (data: SocialMediaAccountFormData) => {
-    accountMutation.mutate(data);
+  // Helper function to format currency with both values
+  const formatCurrency = (amount: number, bothCurrencies: boolean = false): string => {
+    const usdAmount = `${amount.toFixed(2)} دولار`;
+    const jodAmount = `${amount.toFixed(2)} دينار`;
+    return bothCurrencies ? `${usdAmount} / ${jodAmount}` : (defaultCurrency === 'USD' ? usdAmount : jodAmount);
   };
 
-  const onWhatsAppSubmit = async (data: WhatsAppSettings) => {
-    setWhatsAppSettings(data);
+  // Filter invoices by date range
+  const filteredInvoices = invoices?.filter(invoice => {
+    if (!dateRange?.from || !dateRange?.to) return true;
+    const invoiceDate = new Date(invoice.date);
+    return invoiceDate >= dateRange.from && invoiceDate <= dateRange.to;
+  });
+
+  // Calculate sales statistics
+  const salesStats = {
+    totalSales: filteredInvoices?.reduce((sum, inv) => sum + inv.finalTotal, 0) || 0,
+    totalInvoices: filteredInvoices?.length || 0,
+    averageInvoice: filteredInvoices?.length
+      ? (filteredInvoices.reduce((sum, inv) => sum + inv.finalTotal, 0) / filteredInvoices.length)
+      : 0
+  };
+
+  // Get inventory status
+  const inventoryStats = {
+    totalProducts: products?.length || 0,
+    lowStock: products?.filter(p => p.quantity <= p.minimumQuantity).length || 0,
+    outOfStock: products?.filter(p => p.quantity <= 0).length || 0
+  };
+
+  const exportSalesReport = () => {
+    if (!filteredInvoices) return;
+
+    const workbook = XLSX.utils.book_new();
+
+    // Prepare sales data
+    const salesData = filteredInvoices.map(invoice => ({
+      'رقم الفاتورة': invoice.id,
+      'التاريخ': format(new Date(invoice.date), 'dd/MM/yyyy', { locale: ar }),
+      'العميل': invoice.customerName || 'عميل نقدي',
+      'المجموع': formatCurrency(invoice.subtotal, true),
+      'الخصم': formatCurrency(invoice.discountAmount, true),
+      'الإجمالي': formatCurrency(invoice.finalTotal, true)
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(salesData, { RTL: true });
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'تقرير المبيعات');
+
+    // Generate and download file
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `تقرير_المبيعات_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
     toast({
-      title: "تم حفظ الإعدادات",
-      description: "تم تحديث إعدادات WhatsApp بنجاح",
+      title: "تم تصدير التقرير",
+      description: "تم تصدير تقرير المبيعات بنجاح",
     });
   };
 
-  const onGoogleCalendarSubmit = async (data: GoogleCalendarSettings) => {
-    setGoogleCalendarSettings(data);
+  const exportInventoryReport = () => {
+    if (!products) return;
+
+    const workbook = XLSX.utils.book_new();
+
+    // Prepare inventory data
+    const inventoryData = products.map(product => ({
+      'اسم المنتج': product.name,
+      'الباركود': product.barcode || '-',
+      'الكمية الحالية': product.quantity,
+      'الحد الأدنى': product.minimumQuantity,
+      'حالة المخزون': product.quantity <= 0 ? 'نفذ المخزون' :
+                      product.quantity <= product.minimumQuantity ? 'منخفض' : 'جيد',
+      'سعر التكلفة': formatCurrency(product.costPrice, true),
+      'سعر البيع': formatCurrency(product.sellingPrice, true)
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(inventoryData, { RTL: true });
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'تقرير المخزون');
+
+    // Generate and download file
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `تقرير_المخزون_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
     toast({
-      title: "تم حفظ الإعدادات",
-      description: "تم تحديث إعدادات Google Calendar بنجاح",
+      title: "تم تصدير التقرير",
+      description: "تم تصدير تقرير المخزون بنجاح",
     });
   };
-
-  const onSocialMediaSubmit = async (data: SocialMediaSettings) => {
-    setSocialMediaSettings(data);
-    toast({
-      title: "تم حفظ الإعدادات",
-      description: "تم تحديث إعدادات وسائل التواصل الاجتماعي بنجاح",
-    });
-  };
-
-  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        storeSettingsMutation.mutate({
-          storeLogo: reader.result as string,
-        });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const { data: connections } = useQuery({
-    queryKey: ['databaseConnections'],
-    queryFn: () => {
-      // Replace with your actual database connection fetching logic
-      return Promise.resolve([{
-        id: '1',
-        name: 'Main Database',
-        type: 'MySQL',
-        host: 'localhost',
-        database: 'mydb',
-        isActive: true,
-        createdAt: new Date().toISOString()
-      }]);
-    }
-  });
 
   return (
     <DashboardLayout>
       <div className="space-y-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">إعدادات النظام</h1>
-            <p className="text-muted-foreground mt-2">إدارة إعدادات المتجر والتكاملات</p>
-          </div>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 ml-2" />
-                إضافة حساب جديد
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle>ربط حسابات التواصل الاجتماعي</DialogTitle>
-                <DialogDescription>
-                  اختر إحدى المنصات التالية للربط مع حسابك
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="grid gap-4 py-4">
-                <Button
-                  variant="outline"
-                  className="w-full flex items-center justify-start gap-3 h-14"
-                  onClick={() => {
-                    // سيتم إضافة منطق تسجيل الدخول لفيسبوك
-                    toast({
-                      title: "قريباً",
-                      description: "سيتم إضافة خيار تسجيل الدخول بفيسبوك قريباً",
-                    });
-                  }}
-                >
-                  <SiFacebook className="h-6 w-6 text-blue-600" />
-                  <div className="flex flex-col items-start">
-                    <span className="font-semibold">تسجيل الدخول بفيسبوك</span>
-                    <span className="text-sm text-muted-foreground">ربط حساب فيسبوك الخاص بك</span>
-                  </div>
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="w-full flex items-center justify-start gap-3 h-14"
-                  onClick={() => {
-                    // سيتم إضافة منطق تسجيل الدخول لانستغرام
-                    toast({
-                      title: "قريباً",
-                      description: "سيتم إضافة خيار تسجيل الدخول بانستغرام قريباً",
-                    });
-                  }}
-                >
-                  <SiInstagram className="h-6 w-6 text-pink-600" />
-                  <div className="flex flex-col items-start">
-                    <span className="font-semibold">تسجيل الدخول بانستغرام</span>
-                    <span className="text-sm text-muted-foreground">ربط حساب انستغرام الخاص بك</span>
-                  </div>
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="w-full flex items-center justify-start gap-3 h-14"
-                  onClick={() => {
-                    // سيتم إضافة منطق تسجيل الدخول لسناب شات
-                    toast({
-                      title: "قريباً",
-                      description: "سيتم إضافة خيار تسجيل الدخول بسناب شات قريباً",
-                    });
-                  }}
-                >
-                  <SiSnapchat className="h-6 w-6 text-yellow-500" />
-                  <div className="flex flex-col items-start">
-                    <span className="font-semibold">تسجيل الدخول بسناب شات</span>
-                    <span className="text-sm text-muted-foreground">ربط حساب سناب شات الخاص بك</span>
-                  </div>
-                </Button>
-              </div>
-
-              <div className="mt-4 text-center">
-                <p className="text-sm text-muted-foreground">
-                  أو يمكنك إدخال بيانات الحساب يدوياً
-                </p>
-              </div>
-
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-4">
-                  <FormField
-                    control={form.control}
-                    name="platform"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>المنصة</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="اختر المنصة" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="facebook">فيسبوك</SelectItem>
-                            <SelectItem value="instagram">انستغرام</SelectItem>
-                            <SelectItem value="snapchat">سناب شات</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="username"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>اسم المستخدم / رقم الهاتف</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="أدخل اسم المستخدم أو رقم الهاتف" />
-                        </FormControl>
-                        <FormDescription>
-                          يمكنك إدخال اسم المستخدم أو رقم الهاتف الخاص بالحساب
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>كلمة المرور</FormLabel>
-                        <FormControl>
-                          <Input type="password" {...field} placeholder="أدخل كلمة المرور" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <Button
-                    type="submit"
-                    disabled={accountMutation.isLoading || !form.formState.isValid}
-                    className="w-full"
-                  >
-                    {accountMutation.isLoading ? "جاري الحفظ..." : "حفظ الحساب"}
-                  </Button>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold">التقارير</h1>
         </div>
 
-        <Tabs defaultValue="store" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 gap-4">
-            <TabsTrigger value="store" className="space-x-2">
-              <Building2 className="h-4 w-4" />
-              <span>المتجر</span>
+        <Tabs defaultValue="sales">
+          <TabsList>
+            <TabsTrigger value="sales">
+              <BarChart3 className="h-4 w-4 ml-2" />
+              تقارير المبيعات
             </TabsTrigger>
-            <TabsTrigger value="integrations" className="space-x-2">
-              <SettingsIcon className="h-4 w-4" />
-              <span>التكاملات</span>
-            </TabsTrigger>
-            <TabsTrigger value="appearance" className="space-x-2">
-              <Paintbrush className="h-4 w-4" />
-              <span>المظهر</span>
-            </TabsTrigger>
-            <TabsTrigger value="database" className="space-x-2">
-              <Database className="h-4 w-4" />
-              <span>قواعد البيانات</span>
-            </TabsTrigger>
-            <TabsTrigger value="backup" className="space-x-2">
-              <Download className="h-4 w-4" />
-              <span>النسخ الاحتياطي</span>
+            <TabsTrigger value="inventory">
+              <Package className="h-4 w-4 ml-2" />
+              تقارير المخزون
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="store" className="space-y-6">
-            <CustomCard>
-              <CardHeader>
-                <div className="flex items-center space-x-4">
-                  <div className="flex gap-2">
-                   import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { Button } from "@/components/ui/button";
-import { Card as CardComponent, CardContent, CardHeader, CardTitle, CardProps as CardComponentProps, CardDescription } from "@/components/ui/card";
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { MessageSquare, Upload, Plus, Building2, Settings as SettingsIcon, Paintbrush, Database, Download } from "lucide-react";
-import { SiGooglecalendar, SiFacebook, SiInstagram, SiSnapchat } from "react-icons/si";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useState, useEffect } from "react";
-import { updateThemeColors, updateThemeFonts, loadThemeSettings } from "@/lib/theme";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  getStoreSettings,
-  setStoreSettings,
-  getSocialAccounts,
-  addSocialAccount,
-  getWhatsAppSettings,
-  setWhatsAppSettings,
-  getGoogleCalendarSettings,
-  setGoogleCalendarSettings,
-  getSocialMediaSettings,
-  setSocialMediaSettings,
-  type StoreSettings,
-  type SocialMediaAccount,
-  type WhatsAppSettings,
-  type GoogleCalendarSettings,
-  type SocialMediaSettings
-} from "@/lib/storage";
-import { DatabaseConnectionForm } from "@/components/settings/database-connection-form";
-import type { DatabaseConnection } from "@shared/schema";
-import { motion } from "framer-motion";
-import { Table, TableBody, TableCell, TableHeader, TableHead, TableRow } from "@/components/ui/table";
-import { Separator } from "@/components/ui/separator";
+          <TabsContent value="sales" className="space-y-4">
+            <div className="flex justify-between items-center">
+              <DatePickerWithRange date={dateRange} setDate={setDateRange} />
+              <Button onClick={exportSalesReport}>
+                <FileSpreadsheet className="h-4 w-4 ml-2" />
+                تصدير التقرير
+              </Button>
+            </div>
 
-const socialMediaAccountSchema = z.object({
-  platform: z.enum(['facebook', 'instagram', 'snapchat'], {
-    required_error: "يرجى اختيار المنصة"
-  }),
-  username: z.string().min(1, "اسم المستخدم مطلوب").max(50, "اسم المستخدم طويل جداً"),
-  password: z.string().min(6, "كلمة المرور يجب أن تكون 6 أحرف على الأقل").max(50, "كلمة المرور طويلة جداً"),
-});
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">إجمالي المبيعات</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">{formatCurrency(salesStats.totalSales, true)}</p>
+                </CardContent>
+              </Card>
 
-type SocialMediaAccountFormData = z.infer<typeof socialMediaAccountSchema>;
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">عدد الفواتير</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">{salesStats.totalInvoices}</p>
+                </CardContent>
+              </Card>
 
-const whatsappSchema = z.object({
-  WHATSAPP_API_TOKEN: z.string().min(1, "رمز الوصول مطلوب"),
-  WHATSAPP_BUSINESS_PHONE_NUMBER: z.string().min(1, "رقم الهاتف مطلوب"),
-});
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">متوسط قيمة الفاتورة</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">{formatCurrency(salesStats.averageInvoice, true)}</p>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
 
-const googleCalendarSchema = z.object({
-  GOOGLE_CLIENT_ID: z.string().min(1, "معرف العميل مطلوب"),
-  GOOGLE_CLIENT_SECRET: z.string().min(1, "الرمز السري مطلوب"),
-});
+          <TabsContent value="inventory" className="space-y-4">
+            <div className="flex justify-end">
+              <Button onClick={exportInventoryReport}>
+                <FileSpreadsheet className="h-4 w-4 ml-2" />
+                تصدير التقرير
+              </Button>
+            </div>
 
-const socialMediaSchema = z.object({
-  FACEBOOK_APP_ID: z.string().min(1, "معرف التطبيق مطلوب"),
-  FACEBOOK_APP_SECRET: z.string().min(1, "الرمز السري مطلوب"),
-  INSTAGRAM_ACCESS_TOKEN: z.string().min(1, "رمز الوصول مطلوب"),
-});
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">إجمالي المنتجات</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">{inventoryStats.totalProducts}</p>
+                </CardContent>
+              </Card>
 
-const currencySettingsSchema = z.object({
-  defaultCurrency: z.enum(['USD', 'IQD'], {
-    required_error: "يرجى اختيار العملة الافتراضية"
-  }),
-  usdToIqdRate: z.number()
-    .min(1, "يجب أن يكون سعر الصرف أكبر من 0")
-    .max(999999, "سعر الصرف غير صالح"),
-});
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">منتجات منخفضة المخزون</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold text-yellow-600">{inventoryStats.lowStock}</p>
+                </CardContent>
+              </Card>
 
-type CurrencySettings = z.infer<typeof currencySettingsSchema>;
-
-const CustomCard = ({ className, ...props }: CardComponentProps) => (
-  <CardComponent className={cn("w-full", className)} {...props} />
-);
-
-const colorOptions = [
-  { type: 'solid', color: "#0ea5e9", name: "أزرق" },
-  { type: 'solid', color: "#10b981", name: "أخضر" },
-  { type: 'solid', color: "#8b5cf6", name: "بنفسجي" },
-  { type: 'solid', color: "#ef4444", name: "أحمر" },
-  { type: 'solid', color: "#f59e0b", name: "برتقالي" },
-  { type: 'gradient', colors: ["#00c6ff", "#0072ff"], name: "تدرج أزرق" },
-  { type: 'gradient', colors: ["#11998e", "#38ef7d"], name: "تدرج أخضر" },
-  { type: 'gradient', colors: ["#fc466b", "#3f5efb"], name: "تدرج وردي" },
-  { type: 'gradient', colors: ["#f12711", "#f5af19"], name: "تدرج برتقالي" },
-  { type: 'gradient', colors: ["#8e2de2", "#4a00e0"], name: "تدرج بنفسجي" },
-];
-
-const createGradient = (color1: string, color2: string) => `linear-gradient(to right, ${color1}, ${color2})`;
-
-async function generateBackup() {
-  try {
-    const response = await fetch('/api/backup/generate', {
-      method: 'POST',
-    });
-
-    if (!response.ok) throw new Error('فشل إنشاء النسخة الاحتياطية');
-
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `backup-${new Date().toISOString().split('T')[0]}.zip`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-
-    return true;
-  } catch (error) {
-    console.error('Error generating backup:', error);
-    return false;
-  }
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">منتجات نفذت من المخزون</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold text-red-600">{inventoryStats.outOfStock}</p>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </DashboardLayout>
+  );
 }
-
-export default function SettingsPage() {
-  const { toast } = useToast();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const queryClient = useQueryClient();
-
-  // Load theme settings on mount
-  useEffect(() => {
-    loadThemeSettings();
-  }, []);
-
-  // Queries
-  const { data: storeSettings } = useQuery({
-    queryKey: ['storeSettings'],
-    queryFn: getStoreSettings,
-  });
-
-  const { data: socialAccounts } = useQuery({
-    queryKey: ['socialAccounts'],
-    queryFn: getSocialAccounts,
-  });
-
-  // Forms
-  const whatsappForm = useForm<WhatsAppSettings>({
-    resolver: zodResolver(whatsappSchema),
-    defaultValues: getWhatsAppSettings(),
-  });
-
-  const googleCalendarForm = useForm<GoogleCalendarSettings>({
-    resolver: zodResolver(googleCalendarSchema),
-    defaultValues: getGoogleCalendarSettings(),
-  });
-
-  const socialMediaForm = useForm<SocialMediaSettings>({
-    resolver: zodResolver(socialMediaSchema),
-    defaultValues: getSocialMediaSettings(),
-  });
-
-  const currencyForm = useForm<CurrencySettings>({
-    resolver: zodResolver(currencySettingsSchema),
-    defaultValues: {
-      defaultCurrency: 'USD',
-      usdToIqdRate: 1460, // Default exchange rate
-    }
-  });
-
-  // Mutations
-  const storeSettingsMutation = useMutation({
-    mutationFn: async (data: {
-      storeName?: string;
-      storeLogo?: string;
-      primary?: string | { gradient: string[] };
-      fontSize?: string;
-      fontFamily?: string;
-      currencySettings?: CurrencySettings;
-    }) => {
-      // Update store settings
-      if (data.storeName !== undefined || data.storeLogo !== undefined) {
-        const newSettings = {
-          ...(data.storeName !== undefined && { storeName: data.storeName }),
-          ...(data.storeLogo !== undefined && { storeLogo: data.storeLogo }),
-        };
-        setStoreSettings(newSettings);
-      }
-
-      // Handle color changes
-      if (data.primary) {
-        updateThemeColors(data.primary);
-      }
-
-      // Handle font changes
-      if (data.fontSize || data.fontFamily) {
-        updateThemeFonts(
-          data.fontSize || localStorage.getItem('theme-font-size') || 'medium',
-          data.fontFamily || localStorage.getItem('theme-font-family') || 'tajawal'
-        );
-      }
-      if (data.currencySettings) {
-        setStoreSettings({ ...storeSettings, currencySettings: data.currencySettings });
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['storeSettings'] });
-      toast({
-        title: "تم حفظ الإعدادات",
-        description: "تم تحديث الإعدادات بنجاح",
-      });
-    },
-  });
-
-  const accountMutation = useMutation({
-    mutationFn: (data: SocialMediaAccountFormData) => {
-      const newAccount = addSocialAccount(data);
-      return newAccount;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['socialAccounts'] });
-      toast({
-        title: "تم بنجاح",
-        description: "تم إضافة الحساب بنجاح",
-      });
-      form.reset();
-      setIsDialogOpen(false);
-    },
-  });
-
-  const form = useForm<SocialMediaAccountFormData>({
-    resolver: zodResolver(socialMediaAccountSchema),
-    defaultValues: {
-      platform: undefined,
-      username: '',
-      password: '',
-    },
-  });
-
-  const onSubmit = (data: SocialMediaAccountFormData) => {
-    accountMutation.mutate(data);
-  };
-
-  const onWhatsAppSubmit = async (data: WhatsAppSettings) => {
-    setWhatsAppSettings(data);
-    toast({
-      title: "تم حفظ الإعدادات",
-      description: "تم تحديث إعدادات WhatsApp بنجاح",
-    });
-  };
-
-  const onGoogleCalendarSubmit = async (data: GoogleCalendarSettings) => {
-    setGoogleCalendarSettings(data);
-    toast({
-      title: "تم حفظ الإعدادات",
-      description: "تم تحديث إعدادات Google Calendar بنجاح",
-    });
-  };
-
-  const onSocialMediaSubmit = async (data: SocialMediaSettings) => {
-    setSocialMediaSettings(data);
-    toast({
-      title: "تم حفظ الإعدادات",
-      description: "تم تحديث إعدادات وسائل التواصل الاجتماعي بنجاح",
-    });
-  };
-
-  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        storeSettingsMutation.mutate({
-          storeLogo: reader.result as string,
-        });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const { data: connections } = useQuery({
-    queryKey: ['databaseConnections'],
-    queryFn: () => {
-      // Replace with your actual database connection fetching logic
-      return Promise.resolve([{
-        id: '1',
-        name: 'Main Database',
-        type: 'MySQL',
-        host: 'localhost',
-        database: 'mydb',
-        isActive true,
-        createdAt: new Date().toISOString()
-      }]);
-    }
-  });
-
-  return (
-    <DashboardLayout>
-      <div className="space-y-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">إعدادات النظام</h1>
-            <p className="text-muted-foreground mt-2">إدارة إعدادات المتجر والتكاملات</p>
-          </div>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 ml-2" />
-                إضافة حساب جديد
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle>ربط حسابات التواصل الاجتماعي</DialogTitle>
-                <DialogDescription>
-                  اختر إحدى المنصات التالية للربط مع حسابك
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="grid gap-4 py-4">
-                <Button
-                  variant="outline"
-                  className="w-full flex items-center justify-start gap-3 h-14"
-                  onClick={() => {
-                    // سيتم إضافة منطق تسجيل الدخول لفيسبوك
-                    toast({
-                      title: "قريباً",
-                      description: "سيتم إضافة خيار تسجيل الدخول بفيسبوك قريباً",
-                    });
-                  }}
-                >
-                  <SiFacebook className="h-6 w-6 text-blue-600" />
-                  <div className="flex flex-col items-start">
-                    <span className="font-semibold">تسجيل الدخول بفيسبوك</span>
-                    <span className="text-sm text-muted-foreground">ربط حساب فيسبوك الخاص بك</span>
-                  </div>
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="w-full flex items-center justify-start gap-3 h-14"
-                  onClick={() => {
-                    // سيتم إضافة منطق تسجيل الدخول لانستغرام
-                    toast({
-                      title: "قريباً",
-                      description: "سيتم إضافة خيار تسجيل الدخول بانستغرام قريباً",
-                    });
-                  }}
-                >
-                  <SiInstagram className="h-6 w-6 text-pink-600" />
-                  <div className="flex flex-col items-start">
-                    <span className="font-semibold">تسجيل الدخول بانستغرام</span>
-                    <span className="text-sm text-muted-foreground">ربط حساب انستغرام الخاص بك</span>
-                  </div>
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="w-full flex items-center justify-start gap-3 h-14"
-                  onClick={() => {
-                    // سيتم إضافة منطق تسجيل الدخول لسناب شات
-                    toast({
-                      title: "قريباً",
-                      description: "سيتم إضافة خيار تسجيل الدخول بسناب شات قريباً",
-                    });
-                  }}
-                >
-                  <SiSnapchat className="h-6 w-6 text-yellow-500" />
-                  <div className="flex flex-col items-start">
-                    <span className="font-semibold">تسجيل الدخول بسناب شات</span>
-                    <span className="text-sm text-muted-foreground">ربط حساب سناب شات الخاص بك</span>
-                  </div>
-                </Button>
-              </div>
-
-              <div className="mt-4 text-center">
-                <p className="text-sm text-muted-foreground">
-                  أو يمكنك إدخال بيانات الحساب يدوياً
-                </p>
-              </div>
-
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-4">
-                  <FormField
-                    control={form.control}
-                    name="platform"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>المنصة</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="اختر المنصة" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="facebook">فيسبوك</SelectItem>
-                            <SelectItem value="instagram">انستغرام</SelectItem>
-                            <SelectItem value="snapchat">سناب شات</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="username"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>اسم المستخدم / رقم الهاتف</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="أدخل اسم المستخدم أو رقم الهاتف" />
-                        </FormControl>
-                        <FormDescription>
-                          يمكنك إدخال اسم المستخدم أو رقم الهاتف الخاص بالحساب
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>كلمة المرور</FormLabel>
-                        <FormControl>
-                          <Input type="password" {...field} placeholder="أدخل كلمة المرور" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <Button
-                    type="submit"
-                    disabled={accountMutation.isLoading || !form.formState.isValid}
-                    className="w-full"
-                  >
-                    {accountMutation.isLoading ? "جاري الحفظ..." : "حفظ الحساب"}
-                  </Button>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
-        </div>
-
-        <Tabs defaultValue="store" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 gap-4">
-            <TabsTrigger value="store" className="space-x-2">
-              <Building2 className="h-4 w-4" />
-              <span>المتجر</span>
-            </TabsTrigger>
-            <TabsTrigger value="integrations" className="space-x-2">
-              <SettingsIcon className="h-4 w-4" />
-              <span>التكاملات</span>
-            </TabsTrigger>
-            <TabsTrigger value="appearance" className="space-x-2">
-              <Paintbrush className="h-4 w-4" />
-              <span>المظهر</span>
-            </TabsTrigger>
-            <TabsTrigger value="database" className="space-x-2">
-              <Database className="h-4 w-4" />
-              <span>قواعد البيانات</span>
-            </TabsTrigger>
-            <TabsTrigger value="backup" className="space-x-2">
-              <Download className="h-4 w-4" />
-              <span>النسخ الاحتياطي</span>
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="store" className="space-y-6">
-            <CustomCard>
-              <CardHeader>
-                <div className="flex items-center space-x-4">
-                  <div className="flex gap-2">
-                   
