@@ -1,60 +1,141 @@
-import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
+import type { Express } from "express";
+import { createServer, type Server } from "http";
+import { storage } from "./storage";
+import express from 'express';
+import multer from 'multer';
+import { backupService } from './services/backup-service';
 
-const app = express();
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: false, limit: '50mb' }));
+const upload = multer({ dest: 'uploads/' });
 
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+export async function registerRoutes(app: Express): Promise<Server> {
+  // Staff Dashboard APIs
+  app.get("/api/sales/today", async (_req, res) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
+    const invoices = await storage.getInvoices();
+    const todaySales = invoices.filter(invoice => {
+      const invoiceDate = new Date(invoice.date);
+      return invoiceDate >= today;
+    });
 
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
+    const total = todaySales.reduce((sum, invoice) => sum + Number(invoice.finalTotal), 0);
 
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
+    res.json({
+      total,
+      count: todaySales.length,
+      items: todaySales.map(invoice => ({
+        id: invoice.id,
+        amount: invoice.finalTotal,
+        date: invoice.date,
+        status: invoice.status,
+        customerName: invoice.customerName
+      }))
+    });
+  });
 
-      log(logLine);
+  // Backup and Restore endpoints
+  app.post('/api/backup/generate', async (_req, res) => {
+    try {
+      const backupPath = await backupService.generateBackup();
+      res.download(backupPath);
+    } catch (error) {
+      console.error('Error generating backup:', error);
+      res.status(500).json({ error: 'فشل إنشاء النسخة الاحتياطية' });
     }
   });
 
-  next();
-});
+  app.post('/api/backup/restore', upload.single('backup'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'لم يتم تحميل أي ملف' });
+      }
 
-(async () => {
-  const server = await registerRoutes(app);
-
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    res.status(status).json({ message });
-    throw err;
+      await backupService.restoreBackup(req.file.path);
+      res.json({ message: 'تم استعادة النسخة الاحتياطية بنجاح' });
+    } catch (error) {
+      console.error('Error restoring backup:', error);
+      res.status(500).json({ error: 'فشل استعادة النسخة الاحتياطية' });
+    }
   });
 
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
-  }
+  app.get("/api/appointments/today", async (_req, res) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const PORT = 5000;
-  server.listen(PORT, "0.0.0.0", () => {
-    log(`serving on port ${PORT}`);
+    const appointments = await storage.getAppointments();
+    const todayAppointments = appointments.filter(apt => {
+      const aptDate = new Date(apt.startTime);
+      return aptDate >= today && aptDate < tomorrow;
+    });
+
+    // Get customer details for each appointment
+    const appointmentsWithDetails = await Promise.all(
+      todayAppointments.map(async (apt) => {
+        const customer = await storage.getCustomer(apt.customerId);
+        return {
+          ...apt,
+          customerName: customer?.name,
+          customerPhone: customer?.phone
+        };
+      })
+    );
+
+    res.json(appointmentsWithDetails);
   });
-})();
+
+  app.get("/api/products/low-stock", async (_req, res) => {
+    const products = await storage.getProducts();
+    const lowStock = products.filter(product => Number(product.quantity) < 10);
+
+    // Get group details for each product
+    const productsWithGroups = await Promise.all(
+      lowStock.map(async (product) => {
+        const group = await storage.getProductGroup(product.groupId);
+        return {
+          ...product,
+          groupName: group?.name
+        };
+      })
+    );
+
+    res.json(productsWithGroups);
+  });
+
+  // إضافة API للإحصائيات السريعة للموظفين
+  app.get("/api/staff/quick-stats", async (_req, res) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // الحصول على إجمالي المبيعات
+    const invoices = await storage.getInvoices();
+    const todaySales = invoices.filter(invoice => {
+      const invoiceDate = new Date(invoice.date);
+      return invoiceDate >= today;
+    });
+    const totalSales = todaySales.reduce((sum, invoice) => sum + Number(invoice.finalTotal), 0);
+
+    // الحصول على عدد المواعيد
+    const appointments = await storage.getAppointments();
+    const todayAppointments = appointments.filter(apt => {
+      const aptDate = new Date(apt.startTime);
+      return aptDate >= today;
+    });
+
+    // الحصول على المنتجات منخفضة المخزون
+    const products = await storage.getProducts();
+    const lowStockCount = products.filter(product => Number(product.quantity) < 10).length;
+
+    res.json({
+      totalSales,
+      appointmentsCount: todayAppointments.length,
+      lowStockCount,
+      salesCount: todaySales.length
+    });
+  });
+
+  const httpServer = createServer(app);
+  return httpServer;
+}
