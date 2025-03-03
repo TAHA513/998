@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React from "react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
 import {
   Users,
@@ -9,17 +9,15 @@ import {
   TrendingUp,
   Package2,
   DollarSign,
-  ShoppingCart,
   AlertTriangle,
   Target,
   ArrowUpRight,
   ArrowDownRight,
-  Megaphone,
-  Bell
+  Megaphone
 } from "lucide-react";
 import {
-  AreaChart,
-  Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -30,9 +28,7 @@ import {
   Cell,
   Legend,
   BarChart,
-  Bar,
-  LineChart,
-  Line
+  Bar
 } from "recharts";
 import { ar } from "date-fns/locale";
 import { Progress } from "@/components/ui/progress";
@@ -140,7 +136,7 @@ const DashboardPage: React.FC = () => {
           </Alert>
         )}
 
-        {/* KPI Cards - New Interactive Design */}
+        {/* KPI Cards */}
         <div className="grid gap-4 md:grid-cols-4">
           {/* نمو المبيعات */}
           <Card className="relative overflow-hidden">

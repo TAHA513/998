@@ -1,40 +1,19 @@
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Edit, Trash2, Barcode, Filter, SortAsc, SortDesc } from "lucide-react";
+import { Plus, Edit, Trash2, Barcode, Filter, SortAsc, SortDesc, AlertCircle } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Product, ProductGroup } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ProductForm } from "@/components/products/product-form";
 import { SearchInput } from "@/components/ui/search-input";
 import { useState } from "react";
-import { AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function ProductsPage() {
   const { toast } = useToast();
@@ -80,7 +59,7 @@ export default function ProductsPage() {
       return {
         label: "نفذ المخزون",
         variant: "destructive" as const,
-        showWarning: true
+        showWarning: true,
       };
     }
 
@@ -88,28 +67,30 @@ export default function ProductsPage() {
       return {
         label: "المخزون منخفض",
         variant: "warning" as const,
-        showWarning: true
+        showWarning: true,
       };
     }
 
     return {
       label: "متوفر",
       variant: "default" as const,
-      showWarning: false
+      showWarning: false,
     };
   };
 
   const getSortedAndFilteredProducts = () => {
-    let filtered = products?.filter((product) => {
-      const matchesSearch = searchTerm === "" || 
-        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.barcode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        groups?.find(g => g.id === product.groupId)?.name.toLowerCase().includes(searchTerm.toLowerCase());
+    let filtered =
+      products?.filter((product) => {
+        const matchesSearch =
+          searchTerm === "" ||
+          product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          product.barcode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          groups?.find((g) => g.id === product.groupId)?.name.toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchesGroup = selectedGroup === "all" || product.groupId.toString() === selectedGroup;
+        const matchesGroup = selectedGroup === "all" || product.groupId.toString() === selectedGroup;
 
-      return matchesSearch && matchesGroup;
-    }) || [];
+        return matchesSearch && matchesGroup;
+      }) || [];
 
     return filtered.sort((a, b) => {
       let comparison = 0;
@@ -193,15 +174,11 @@ export default function ProductsPage() {
           const stockStatus = getStockStatus(product);
 
           return (
-            <Card key={product.id} className={
-              stockStatus?.showWarning ? "border-yellow-500 dark:border-yellow-400" : ""
-            }>
+            <Card key={product.id} className={stockStatus?.showWarning ? "border-yellow-500 dark:border-yellow-400" : ""}>
               <CardHeader className="space-y-0 pb-2">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg font-bold">{product.name}</CardTitle>
-                  <Badge variant={stockStatus?.variant || "default"}>
-                    {stockStatus?.label || "متوفر"}
-                  </Badge>
+                  <Badge variant={stockStatus?.variant || "default"}>{stockStatus?.label || "متوفر"}</Badge>
                 </div>
                 <div className="text-sm text-muted-foreground">{group?.name}</div>
               </CardHeader>
@@ -221,9 +198,7 @@ export default function ProductsPage() {
                     <span>الكمية:</span>
                     <div className="flex items-center gap-2">
                       <span>{product.quantity}</span>
-                      {stockStatus?.showWarning && (
-                        <AlertCircle className="h-4 w-4 text-yellow-500" />
-                      )}
+                      {stockStatus?.showWarning && <AlertCircle className="h-4 w-4 text-yellow-500" />}
                     </div>
                   </div>
                   <div className="flex justify-between text-sm">
@@ -245,8 +220,8 @@ export default function ProductsPage() {
                     </div>
                   )}
                   <div className="flex justify-end space-x-2 pt-4">
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => {
                         setSelectedProduct(product);
@@ -275,9 +250,7 @@ export default function ProductsPage() {
           );
         })}
         {products.length === 0 && (
-          <div className="col-span-full text-center py-8 text-muted-foreground">
-            لا توجد منتجات مطابقة لبحثك
-          </div>
+          <div className="col-span-full text-center py-8 text-muted-foreground">لا توجد منتجات مطابقة لبحثك</div>
         )}
       </div>
     </div>
@@ -289,16 +262,17 @@ export default function ProductsPage() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold mb-2">المنتجات</h1>
-            <p className="text-muted-foreground">
-              إدارة المنتجات والمخزون في متجرك
-            </p>
+            <p className="text-muted-foreground">إدارة المنتجات والمخزون في متجرك</p>
           </div>
-          <Dialog open={isDialogOpen} onOpenChange={(open) => {
-            setIsDialogOpen(open);
-            if (!open) {
-              setSelectedProduct(null);
-            }
-          }}>
+          <Dialog
+            open={isDialogOpen}
+            onOpenChange={(open) => {
+              setIsDialogOpen(open);
+              if (!open) {
+                setSelectedProduct(null);
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button>
                 <Plus className="ml-2 h-4 w-4" />
@@ -324,21 +298,15 @@ export default function ProductsPage() {
                 <AreaChart data={stockData}>
                   <defs>
                     <linearGradient id="المخزون" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#8884d8" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#8884d8" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <XAxis dataKey="name" />
                   <YAxis />
                   <CartesianGrid strokeDasharray="3 3" />
                   <Tooltip />
-                  <Area
-                    type="monotone"
-                    dataKey="المخزون"
-                    stroke="#8884d8"
-                    fillOpacity={1}
-                    fill="url(#المخزون)"
-                  />
+                  <Area type="monotone" dataKey="المخزون" stroke="#8884d8" fillOpacity={1} fill="url(#المخزون)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>

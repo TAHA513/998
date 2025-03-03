@@ -12,24 +12,25 @@ export async function sendWhatsAppMessage(
   to: string,
   message: string
 ): Promise<void> {
-  const settings = process.env;
-  if (!settings.WHATSAPP_API_TOKEN) {
+  const { WHATSAPP_API_TOKEN, WHATSAPP_BUSINESS_PHONE_NUMBER } = process.env;
+
+  if (!WHATSAPP_API_TOKEN) {
     console.warn("WhatsApp API Token not set");
     return;
   }
 
-  if (!settings.WHATSAPP_BUSINESS_PHONE_NUMBER) {
+  if (!WHATSAPP_BUSINESS_PHONE_NUMBER) {
     console.warn("WhatsApp Business Phone Number not set");
     return;
   }
 
   try {
     const response = await fetch(
-      `https://graph.facebook.com/v17.0/${settings.WHATSAPP_BUSINESS_PHONE_NUMBER}/messages`,
+      `https://graph.facebook.com/v17.0/${WHATSAPP_BUSINESS_PHONE_NUMBER}/messages`,
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${settings.WHATSAPP_API_TOKEN}`,
+          'Authorization': `Bearer ${WHATSAPP_API_TOKEN}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

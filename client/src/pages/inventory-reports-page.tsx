@@ -10,7 +10,14 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery } from "@tanstack/react-query";
-import { Package2, DollarSign, LineChart, TrendingUp, Wallet, BarChart } from "lucide-react";
+import {
+  Package2,
+  DollarSign,
+  LineChart,
+  TrendingUp,
+  Wallet,
+  BarChart,
+} from "lucide-react";
 import type { Product } from "@shared/schema";
 import {
   PieChart,
@@ -25,7 +32,7 @@ import {
   BarChart as RechartsBarChart,
   Bar,
   ResponsiveContainer,
-  Cell
+  Cell,
 } from "recharts";
 
 export default function InventoryReportsPage() {
@@ -33,38 +40,106 @@ export default function InventoryReportsPage() {
     queryKey: ["/api/products"],
   });
 
-  const retailProducts = products.filter(p => p.type === "piece");
-  const wholesaleProducts = products.filter(p => p.type === "weight");
+  // تصنيف المنتجات حسب نوعها
+  const retailProducts = products.filter((p) => p.type === "piece");
+  const wholesaleProducts = products.filter((p) => p.type === "weight");
 
-  // حساب إجمالي قيمة المخزون بسعر التكلفة
-  const totalInventoryCost = products.reduce((sum, product) => {
-    return sum + (Number(product.quantity) * Number(product.costPrice))
-  }, 0);
-
-  // حساب إجمالي قيمة المخزون بسعر البيع
-  const totalInventorySalePrice = products.reduce((sum, product) => {
-    return sum + (Number(product.quantity) * Number(product.sellingPrice))
-  }, 0);
-
-  // حساب الربح المتوقع
+  // حسابات المخزون
+  const totalInventoryCost = products.reduce(
+    (sum, product) => sum + Number(product.quantity) * Number(product.costPrice),
+    0
+  );
+  const totalInventorySalePrice = products.reduce(
+    (sum, product) => sum + Number(product.quantity) * Number(product.sellingPrice),
+    0
+  );
   const expectedProfit = totalInventorySalePrice - totalInventoryCost;
+  const profitMargin = totalInventoryCost
+    ? ((expectedProfit / totalInventoryCost) * 100).toFixed(2)
+    : "0.00";
 
-  // حساب نسبة الربح
-  const profitMargin = ((expectedProfit / totalInventoryCost) * 100).toFixed(2);
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('ar-IQ', {
-      style: 'currency',
-      currency: 'IQD'
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("ar-IQ", {
+      style: "currency",
+      currency: "IQD",
     }).format(amount);
-  };
+
+  // بيانات الرسوم البيانية
+  const pieData = [
+    { name: "منتجات المفرد", value: retailProducts.length },
+    { name: "منتجات الجملة", value: wholesaleProducts.length },
+  ];
+
+  const topProducts = products.slice(0, 5);
+  const lineChartData = topProducts.map((product) => ({
+    name: product.name,
+    "الربح المتوقع": Number(product.sellingPrice) - Number(product.costPrice),
+  }));
+  const barChartData = topProducts.map((product) => ({
+    name: product.name,
+    "سعر التكلفة": Number(product.costPrice),
+    "سعر البيع": Number(product.sellingPrice),
+  }));
+
+  // مكون الجدول لتفاصيل المنتجات (يستخدم لكل من المفرد والجملة)
+  const ProductTable = ({
+    data,
+    isWholesale = false,
+  }: {
+    data: Product[];
+    isWholesale?: boolean;
+  }) => (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>المنتج</TableHead>
+          <TableHead>الباركود</TableHead>
+          <TableHead>{isWholesale ? "الوزن المتوفر" : "الكمية المتوفرة"}</TableHead>
+          <TableHead>
+            {isWholesale ? "سعر التكلفة للكيلو" : "سعر التكلفة"}
+          </TableHead>
+          <TableHead>
+            {isWholesale ? "سعر البيع للكيلو" : "سعر البيع"}
+          </TableHead>
+          <TableHead>القيمة الإجمالية</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {data.length ? (
+          data.map((product) => (
+            <TableRow key={product.id}>
+              <TableCell className="font-medium">{product.name}</TableCell>
+              <TableCell>{product.barcode || "-"}</TableCell>
+              <TableCell>
+                {product.quantity.toString()} {isWholesale && "كغم"}
+              </TableCell>
+              <TableCell>{formatCurrency(Number(product.costPrice))}</TableCell>
+              <TableCell>{formatCurrency(Number(product.sellingPrice))}</TableCell>
+              <TableCell>
+                {formatCurrency(Number(product.quantity) * Number(product.costPrice))}
+              </TableCell>
+            </TableRow>
+          ))
+        ) : (
+          <TableRow>
+            <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
+              {isWholesale ? "لا توجد منتجات جملة" : "لا توجد منتجات مفردة"}
+            </TableCell>
+          </TableRow>
+        )}
+      </TableBody>
+    </Table>
+  );
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
+        {/* العنوان والوصف */}
         <div>
           <h1 className="text-3xl font-bold mb-2">تقارير المخزون والسيولة</h1>
-          <p className="text-muted-foreground">عرض تفصيلي للسيولة المتوفرة وأرصدة المخزون</p>
+          <p className="text-muted-foreground">
+            عرض تفصيلي للسيولة المتوفرة وأرصدة المخزون
+          </p>
         </div>
 
         {/* قسم السيولة */}
@@ -75,7 +150,9 @@ export default function InventoryReportsPage() {
               <Wallet className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(totalInventoryCost)}</div>
+              <div className="text-2xl font-bold">
+                {formatCurrency(totalInventoryCost)}
+              </div>
               <p className="text-xs text-muted-foreground mt-1">
                 إجمالي تكلفة المخزون الحالي
               </p>
@@ -88,7 +165,9 @@ export default function InventoryReportsPage() {
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(totalInventorySalePrice)}</div>
+              <div className="text-2xl font-bold">
+                {formatCurrency(totalInventorySalePrice)}
+              </div>
               <p className="text-xs text-muted-foreground mt-1">
                 إجمالي قيمة البيع للمخزون
               </p>
@@ -101,7 +180,9 @@ export default function InventoryReportsPage() {
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(expectedProfit)}</div>
+              <div className="text-2xl font-bold">
+                {formatCurrency(expectedProfit)}
+              </div>
               <p className="text-xs text-muted-foreground mt-1">
                 إجمالي الربح المتوقع
               </p>
@@ -122,7 +203,7 @@ export default function InventoryReportsPage() {
           </Card>
         </div>
 
-        {/* قسم احصائيات المخزون */}
+        {/* احصائيات المخزون */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -166,8 +247,8 @@ export default function InventoryReportsPage() {
 
         {/* الرسوم البيانية */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {/* رسم بياني دائري لتوزيع المنتجات */}
-          <Card className="col-span-1">
+          {/* الرسم البياني الدائري لتوزيع المنتجات */}
+          <Card>
             <CardHeader>
               <CardTitle>توزيع المنتجات</CardTitle>
             </CardHeader>
@@ -175,19 +256,24 @@ export default function InventoryReportsPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={[{ name: 'منتجات المفرد', value: retailProducts.length }, { name: 'منتجات الجملة', value: wholesaleProducts.length }]}
+                    data={pieData}
                     dataKey="value"
                     nameKey="name"
                     cx="50%"
                     cy="50%"
                     outerRadius={80}
                     fill="#8884d8"
-                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                    label={({ name, percent }) =>
+                      `${name} (${(percent * 100).toFixed(0)}%)`
+                    }
                     animationBegin={0}
                     animationDuration={1500}
                   >
-                    {[{ name: 'منتجات المفرد', value: retailProducts.length }, { name: 'منتجات الجملة', value: wholesaleProducts.length }].map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={index === 0 ? '#8884d8' : '#82ca9d'} />
+                    {pieData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={index === 0 ? "#8884d8" : "#82ca9d"}
+                      />
                     ))}
                   </Pie>
                   <Tooltip formatter={(value) => `عدد المنتجات: ${value}`} />
@@ -197,30 +283,35 @@ export default function InventoryReportsPage() {
             </CardContent>
           </Card>
 
-          {/* رسم بياني خطي للأرباح المتوقعة */}
-          <Card className="col-span-1">
+          {/* الرسم البياني الخطي للأرباح المتوقعة */}
+          <Card>
             <CardHeader>
               <CardTitle>الأرباح المتوقعة (أعلى 5 منتجات)</CardTitle>
             </CardHeader>
             <CardContent className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
-                <RechartsLineChart data={products.slice(0, 5).map(product => ({ name: product.name, 'الربح المتوقع': Number(product.sellingPrice) - Number(product.costPrice) }))}>
+                <RechartsLineChart data={lineChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis
                     dataKey="name"
                     stroke="#64748b"
-                    tick={{ fill: '#64748b', fontSize: 12 }}
-                    axisLine={{ stroke: '#e2e8f0' }}
+                    tick={{ fill: "#64748b", fontSize: 12 }}
+                    axisLine={{ stroke: "#e2e8f0" }}
                   />
                   <YAxis
                     stroke="#64748b"
-                    tick={{ fill: '#64748b', fontSize: 12 }}
-                    axisLine={{ stroke: '#e2e8f0' }}
-                    tickFormatter={(value) => `${value.toLocaleString('ar-IQ')} د.ع`}
+                    tick={{ fill: "#64748b", fontSize: 12 }}
+                    axisLine={{ stroke: "#e2e8f0" }}
+                    tickFormatter={(value) =>
+                      `${value.toLocaleString("ar-IQ")} د.ع`
+                    }
                   />
                   <Tooltip
-                    formatter={(value) => [`${value.toLocaleString('ar-IQ')} د.ع`, 'الربح المتوقع']}
-                    labelStyle={{ fontFamily: 'inherit', textAlign: 'right' }}
+                    formatter={(value) => [
+                      `${value.toLocaleString("ar-IQ")} د.ع`,
+                      "الربح المتوقع",
+                    ]}
+                    labelStyle={{ fontFamily: "inherit", textAlign: "right" }}
                   />
                   <Legend />
                   <Line
@@ -228,7 +319,7 @@ export default function InventoryReportsPage() {
                     dataKey="الربح المتوقع"
                     stroke="#82ca9d"
                     strokeWidth={2}
-                    dot={{ fill: '#82ca9d', strokeWidth: 2 }}
+                    dot={{ fill: "#82ca9d", strokeWidth: 2 }}
                     activeDot={{ r: 8 }}
                     animationDuration={1500}
                   />
@@ -237,30 +328,32 @@ export default function InventoryReportsPage() {
             </CardContent>
           </Card>
 
-          {/* رسم بياني عمودي لمقارنة الأسعار */}
-          <Card className="col-span-1">
+          {/* الرسم البياني العمودي لمقارنة الأسعار */}
+          <Card>
             <CardHeader>
               <CardTitle>مقارنة الأسعار (أعلى 5 منتجات)</CardTitle>
             </CardHeader>
             <CardContent className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
-                <RechartsBarChart data={products.slice(0, 5).map(product => ({ name: product.name, 'سعر التكلفة': Number(product.costPrice), 'سعر البيع': Number(product.sellingPrice) }))}>
+                <RechartsBarChart data={barChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis
                     dataKey="name"
                     stroke="#64748b"
-                    tick={{ fill: '#64748b', fontSize: 12 }}
-                    axisLine={{ stroke: '#e2e8f0' }}
+                    tick={{ fill: "#64748b", fontSize: 12 }}
+                    axisLine={{ stroke: "#e2e8f0" }}
                   />
                   <YAxis
                     stroke="#64748b"
-                    tick={{ fill: '#64748b', fontSize: 12 }}
-                    axisLine={{ stroke: '#e2e8f0' }}
-                    tickFormatter={(value) => `${value.toLocaleString('ar-IQ')} د.ع`}
+                    tick={{ fill: "#64748b", fontSize: 12 }}
+                    axisLine={{ stroke: "#e2e8f0" }}
+                    tickFormatter={(value) =>
+                      `${value.toLocaleString("ar-IQ")} د.ع`
+                    }
                   />
                   <Tooltip
-                    formatter={(value) => [`${value.toLocaleString('ar-IQ')} د.ع`, '']}
-                    labelStyle={{ fontFamily: 'inherit', textAlign: 'right' }}
+                    formatter={(value) => [`${value.toLocaleString("ar-IQ")} د.ع`, ""]}
+                    labelStyle={{ fontFamily: "inherit", textAlign: "right" }}
                   />
                   <Legend />
                   <Bar
@@ -281,6 +374,7 @@ export default function InventoryReportsPage() {
           </Card>
         </div>
 
+        {/* تبويبات تفاصيل المبيعات */}
         <Tabs defaultValue="retail" className="space-y-4">
           <TabsList>
             <TabsTrigger value="retail">المفرد</TabsTrigger>
@@ -293,39 +387,7 @@ export default function InventoryReportsPage() {
                 <CardTitle>تفاصيل مبيعات المفرد</CardTitle>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>المنتج</TableHead>
-                      <TableHead>الباركود</TableHead>
-                      <TableHead>الكمية المتوفرة</TableHead>
-                      <TableHead>سعر التكلفة</TableHead>
-                      <TableHead>سعر البيع</TableHead>
-                      <TableHead>القيمة الإجمالية</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {retailProducts.map((product) => (
-                      <TableRow key={product.id}>
-                        <TableCell className="font-medium">{product.name}</TableCell>
-                        <TableCell>{product.barcode || '-'}</TableCell>
-                        <TableCell>{product.quantity.toString()}</TableCell>
-                        <TableCell>{formatCurrency(Number(product.costPrice))}</TableCell>
-                        <TableCell>{formatCurrency(Number(product.sellingPrice))}</TableCell>
-                        <TableCell>
-                          {formatCurrency(Number(product.quantity) * Number(product.costPrice))}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {retailProducts.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
-                          لا توجد منتجات مفردة
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                <ProductTable data={retailProducts} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -336,39 +398,7 @@ export default function InventoryReportsPage() {
                 <CardTitle>تفاصيل مبيعات الجملة</CardTitle>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>المنتج</TableHead>
-                      <TableHead>الباركود</TableHead>
-                      <TableHead>الوزن المتوفر</TableHead>
-                      <TableHead>سعر التكلفة للكيلو</TableHead>
-                      <TableHead>سعر البيع للكيلو</TableHead>
-                      <TableHead>القيمة الإجمالية</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {wholesaleProducts.map((product) => (
-                      <TableRow key={product.id}>
-                        <TableCell className="font-medium">{product.name}</TableCell>
-                        <TableCell>{product.barcode || '-'}</TableCell>
-                        <TableCell>{product.quantity.toString()} كغم</TableCell>
-                        <TableCell>{formatCurrency(Number(product.costPrice))}</TableCell>
-                        <TableCell>{formatCurrency(Number(product.sellingPrice))}</TableCell>
-                        <TableCell>
-                          {formatCurrency(Number(product.quantity) * Number(product.costPrice))}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {wholesaleProducts.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
-                          لا توجد منتجات جملة
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                <ProductTable data={wholesaleProducts} isWholesale />
               </CardContent>
             </Card>
           </TabsContent>

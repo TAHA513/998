@@ -1,197 +1,242 @@
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { useQuery } from "@tanstack/react-query";
-import { ShoppingCart, Package, Truck, DollarSign, Plus } from "lucide-react";
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import { DatePickerWithRange } from "@/components/ui/date-range-picker";
 import { useState } from "react";
-import { SearchInput } from "@/components/ui/search-input";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
+import { FileSpreadsheet, BarChart3, Package } from "lucide-react";
+import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
-import { formatCurrency } from "@/lib/storage";
-import { PurchaseForm } from "@/components/purchases/purchase-form";
+import { useQuery } from "@tanstack/react-query";
+import type { Product, Invoice } from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
+import { getStoreSettings } from "@/lib/storage";
 
-export default function PurchasesPage() {
-  const [searchTerm, setSearchTerm] = useState("");
+export default function ReportsPage() {
+  const { toast } = useToast();
+  const [dateRange, setDateRange] = useState<{
+    from: Date;
+    to: Date;
+  } | undefined>();
 
-  // جلب طلبات الشراء
-  const { data: purchases } = useQuery({
-    queryKey: ["/api/purchase-orders"],
+  const { data: products } = useQuery<Product[]>({
+    queryKey: ["/api/products"],
   });
 
-  // فلترة الطلبات حسب البحث
-  const filteredPurchases = purchases?.filter(purchase =>
-    purchase.supplier?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    purchase.id.toString().includes(searchTerm)
-  );
+  const { data: invoices } = useQuery<Invoice[]>({
+    queryKey: ["/api/invoices"],
+  });
 
-  // حساب الإحصائيات
-  const todayPurchases = purchases?.filter(purchase => 
-    new Date(purchase.createdAt).toDateString() === new Date().toDateString()
-  )?.length || 0;
+  const storeSettings = getStoreSettings();
+  const defaultCurrency = storeSettings.currencySettings?.defaultCurrency || 'USD';
+  const secondaryCurrency = storeSettings.currencySettings?.secondaryCurrency || 'JOD';
 
-  const totalProducts = purchases?.reduce((sum, purchase) => 
-    sum + purchase.items.length, 0
-  ) || 0;
+  // Helper function to format currency with both values
+  const formatCurrency = (amount: number, bothCurrencies: boolean = false): string => {
+    const usdAmount = `${amount.toFixed(2)} دولار`;
+    const jodAmount = `${amount.toFixed(2)} دينار`;
+    return bothCurrencies ? `${usdAmount} / ${jodAmount}` : (defaultCurrency === 'USD' ? usdAmount : jodAmount);
+  };
 
-  const activeSuppliers = new Set(
-    purchases?.map(purchase => purchase.supplierId)
-  ).size || 0;
+  // Filter invoices by date range
+  const filteredInvoices = invoices?.filter(invoice => {
+    if (!dateRange?.from || !dateRange?.to) return true;
+    const invoiceDate = new Date(invoice.date);
+    return invoiceDate >= dateRange.from && invoiceDate <= dateRange.to;
+  });
 
-  const totalAmount = purchases?.reduce((sum, purchase) => 
-    sum + Number(purchase.totalAmount), 0
-  ) || 0;
+  // Calculate sales statistics
+  const salesStats = {
+    totalSales: filteredInvoices?.reduce((sum, inv) => sum + inv.finalTotal, 0) || 0,
+    totalInvoices: filteredInvoices?.length || 0,
+    averageInvoice: filteredInvoices?.length
+      ? (filteredInvoices.reduce((sum, inv) => sum + inv.finalTotal, 0) / filteredInvoices.length)
+      : 0
+  };
+
+  // Get inventory status
+  const inventoryStats = {
+    totalProducts: products?.length || 0,
+    lowStock: products?.filter(p => p.quantity <= p.minimumQuantity).length || 0,
+    outOfStock: products?.filter(p => p.quantity <= 0).length || 0
+  };
+
+  const exportSalesReport = () => {
+    if (!filteredInvoices) return;
+
+    const workbook = XLSX.utils.book_new();
+
+    // Prepare sales data
+    const salesData = filteredInvoices.map(invoice => ({
+      'رقم الفاتورة': invoice.id,
+      'التاريخ': format(new Date(invoice.date), 'dd/MM/yyyy', { locale: ar }),
+      'العميل': invoice.customerName || 'عميل نقدي',
+      'المجموع': formatCurrency(invoice.subtotal, true),
+      'الخصم': formatCurrency(invoice.discountAmount, true),
+      'الإجمالي': formatCurrency(invoice.finalTotal, true)
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(salesData, { RTL: true });
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'تقرير المبيعات');
+
+    // Generate and download file
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `تقرير_المبيعات_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "تم تصدير التقرير",
+      description: "تم تصدير تقرير المبيعات بنجاح",
+    });
+  };
+
+  const exportInventoryReport = () => {
+    if (!products) return;
+
+    const workbook = XLSX.utils.book_new();
+
+    // Prepare inventory data
+    const inventoryData = products.map(product => ({
+      'اسم المنتج': product.name,
+      'الباركود': product.barcode || '-',
+      'الكمية الحالية': product.quantity,
+      'الحد الأدنى': product.minimumQuantity,
+      'حالة المخزون': product.quantity <= 0 ? 'نفذ المخزون' :
+                      product.quantity <= product.minimumQuantity ? 'منخفض' : 'جيد',
+      'سعر التكلفة': formatCurrency(product.costPrice, true),
+      'سعر البيع': formatCurrency(product.sellingPrice, true)
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(inventoryData, { RTL: true });
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'تقرير المخزون');
+
+    // Generate and download file
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `تقرير_المخزون_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "تم تصدير التقرير",
+      description: "تم تصدير تقرير المخزون بنجاح",
+    });
+  };
 
   return (
     <DashboardLayout>
       <div className="space-y-8">
         <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold">نظام المشتريات</h1>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 ml-2" />
-                طلب شراء جديد
+          <h1 className="text-3xl font-bold">التقارير</h1>
+        </div>
+
+        <Tabs defaultValue="sales">
+          <TabsList>
+            <TabsTrigger value="sales">
+              <BarChart3 className="h-4 w-4 ml-2" />
+              تقارير المبيعات
+            </TabsTrigger>
+            <TabsTrigger value="inventory">
+              <Package className="h-4 w-4 ml-2" />
+              تقارير المخزون
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="sales" className="space-y-4">
+            <div className="flex justify-between items-center">
+              <DatePickerWithRange date={dateRange} setDate={setDateRange} />
+              <Button onClick={exportSalesReport}>
+                <FileSpreadsheet className="h-4 w-4 ml-2" />
+                تصدير التقرير
               </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-4xl">
-              <DialogHeader>
-                <DialogTitle>إنشاء طلب شراء جديد</DialogTitle>
-                <DialogDescription>
-                  أدخل تفاصيل طلب الشراء مع تحديد المورد والمنتجات المطلوبة
-                </DialogDescription>
-              </DialogHeader>
-              <PurchaseForm />
-            </DialogContent>
-          </Dialog>
-        </div>
+            </div>
 
-        {/* الإحصائيات */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">طلبات اليوم</CardTitle>
-              <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{todayPurchases}</div>
-            </CardContent>
-          </Card>
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">إجمالي المبيعات</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">{formatCurrency(salesStats.totalSales, true)}</p>
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">المنتجات المطلوبة</CardTitle>
-              <Package className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalProducts}</div>
-            </CardContent>
-          </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">عدد الفواتير</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">{salesStats.totalInvoices}</p>
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">الموردين النشطين</CardTitle>
-              <Truck className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{activeSuppliers}</div>
-            </CardContent>
-          </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">متوسط قيمة الفاتورة</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">{formatCurrency(salesStats.averageInvoice, true)}</p>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">إجمالي المشتريات</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(totalAmount, true)}</div>
-            </CardContent>
-          </Card>
-        </div>
+          <TabsContent value="inventory" className="space-y-4">
+            <div className="flex justify-end">
+              <Button onClick={exportInventoryReport}>
+                <FileSpreadsheet className="h-4 w-4 ml-2" />
+                تصدير التقرير
+              </Button>
+            </div>
 
-        {/* البحث */}
-        <div className="max-w-sm">
-          <SearchInput
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="البحث في طلبات الشراء..."
-          />
-        </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">إجمالي المنتجات</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold">{inventoryStats.totalProducts}</p>
+                </CardContent>
+              </Card>
 
-        {/* جدول طلبات الشراء */}
-        <div className="border rounded-lg">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>رقم الطلب</TableHead>
-                <TableHead>المورد</TableHead>
-                <TableHead>التاريخ</TableHead>
-                <TableHead>المنتجات</TableHead>
-                <TableHead>الإجمالي</TableHead>
-                <TableHead>الحالة</TableHead>
-                <TableHead>الإجراءات</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredPurchases?.map((purchase) => (
-                <TableRow key={purchase.id}>
-                  <TableCell>{purchase.id}</TableCell>
-                  <TableCell>{purchase.supplier?.name}</TableCell>
-                  <TableCell>
-                    {format(new Date(purchase.createdAt), 'dd MMMM yyyy', { locale: ar })}
-                  </TableCell>
-                  <TableCell>{purchase.items.length} منتج</TableCell>
-                  <TableCell>{formatCurrency(Number(purchase.totalAmount), true)}</TableCell>
-                  <TableCell>
-                    <Badge
-                      className={
-                        purchase.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        purchase.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }
-                    >
-                      {purchase.status === 'completed' ? 'مكتمل' :
-                       purchase.status === 'pending' ? 'قيد الإنتظار' : 'ملغي'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="sm">
-                      عرض التفاصيل
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {(!filteredPurchases || filteredPurchases.length === 0) && (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                    لا توجد طلبات شراء حالياً
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">منتجات منخفضة المخزون</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold text-yellow-600">{inventoryStats.lowStock}</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">منتجات نفذت من المخزون</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold text-red-600">{inventoryStats.outOfStock}</p>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </DashboardLayout>
   );

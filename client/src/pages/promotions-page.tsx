@@ -1,6 +1,12 @@
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Button } from "@/components/ui/button";
 import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
   Table,
   TableBody,
   TableCell,
@@ -8,241 +14,184 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Promotion, DiscountCode } from "@shared/schema";
-import { Ticket, Tag, Copy, BookTemplate } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useQuery } from "@tanstack/react-query";
+import { ShoppingCart, Package, Truck, DollarSign, Plus } from "lucide-react";
+import { useState } from "react";
 import { SearchInput } from "@/components/ui/search-input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
-import { useState } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useToast } from "@/hooks/use-toast";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { formatCurrency } from "@/lib/storage";
+import { PurchaseForm } from "@/components/purchases/purchase-form";
 
-export default function PromotionsPage() {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-
-  const { data: promotions } = useQuery<Promotion[]>({
-    queryKey: ["/api/promotions"],
-  });
-
-  const { data: discountCodes } = useQuery<DiscountCode[]>({
-    queryKey: ["/api/discount-codes"],
-  });
-
+export default function PurchasesPage() {
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Duplicate promotion mutation
-  const duplicatePromotion = useMutation({
-    mutationFn: async (promotion: Promotion) => {
-      const response = await fetch('/api/promotions/duplicate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: promotion.id }),
-      });
-      if (!response.ok) throw new Error('Failed to duplicate promotion');
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/promotions'] });
-      toast({
-        title: "تم النسخ بنجاح",
-        description: "تم نسخ العرض الترويجي بنجاح",
-      });
-    },
+  // جلب طلبات الشراء
+  const { data: purchases } = useQuery({
+    queryKey: ["/api/purchase-orders"],
   });
 
-  // Save as template mutation
-  const saveAsTemplate = useMutation({
-    mutationFn: async (promotion: Promotion) => {
-      const response = await fetch('/api/promotion-templates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ promotionId: promotion.id }),
-      });
-      if (!response.ok) throw new Error('Failed to save template');
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "تم الحفظ كقالب",
-        description: "تم حفظ العرض كقالب بنجاح",
-      });
-    },
-  });
+  // فلترة الطلبات حسب البحث
+  const filteredPurchases = purchases?.filter(purchase =>
+    purchase.supplier?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    purchase.id.toString().includes(searchTerm)
+  );
 
-  const filteredPromotions = promotions?.filter((promotion) => {
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      promotion.name.toLowerCase().includes(searchLower) ||
-      (promotion.description?.toLowerCase().includes(searchLower) ?? false) ||
-      promotion.discountType.toLowerCase().includes(searchLower) ||
-      promotion.status.toLowerCase().includes(searchLower)
-    );
-  });
+  // حساب الإحصائيات
+  const todayPurchases = purchases?.filter(purchase => 
+    new Date(purchase.createdAt).toDateString() === new Date().toDateString()
+  )?.length || 0;
 
-  const filteredDiscountCodes = discountCodes?.filter((code) => {
-    const searchLower = searchTerm.toLowerCase();
-    return code.code.toLowerCase().includes(searchLower);
-  });
+  const totalProducts = purchases?.reduce((sum, purchase) => 
+    sum + purchase.items.length, 0
+  ) || 0;
+
+  const activeSuppliers = new Set(
+    purchases?.map(purchase => purchase.supplierId)
+  ).size || 0;
+
+  const totalAmount = purchases?.reduce((sum, purchase) => 
+    sum + Number(purchase.totalAmount), 0
+  ) || 0;
 
   return (
     <DashboardLayout>
       <div className="space-y-8">
         <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold">العروض والخصومات</h1>
-          <div className="space-x-4">
-            <Button variant="outline">
-              <Tag className="h-4 w-4 ml-2" />
-              إنشاء كود خصم
-            </Button>
-            <Button>
-              <Ticket className="h-4 w-4 ml-2" />
-              عرض جديد
-            </Button>
-          </div>
+          <h1 className="text-3xl font-bold">نظام المشتريات</h1>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 ml-2" />
+                طلب شراء جديد
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl">
+              <DialogHeader>
+                <DialogTitle>إنشاء طلب شراء جديد</DialogTitle>
+                <DialogDescription>
+                  أدخل تفاصيل طلب الشراء مع تحديد المورد والمنتجات المطلوبة
+                </DialogDescription>
+              </DialogHeader>
+              <PurchaseForm />
+            </DialogContent>
+          </Dialog>
         </div>
 
+        {/* الإحصائيات */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">طلبات اليوم</CardTitle>
+              <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{todayPurchases}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">المنتجات المطلوبة</CardTitle>
+              <Package className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalProducts}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">الموردين النشطين</CardTitle>
+              <Truck className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{activeSuppliers}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">إجمالي المشتريات</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatCurrency(totalAmount, true)}</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* البحث */}
         <div className="max-w-sm">
           <SearchInput
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="البحث في العروض والخصومات..."
+            placeholder="البحث في طلبات الشراء..."
           />
         </div>
 
-        <Tabs defaultValue="promotions">
-          <TabsList>
-            <TabsTrigger value="promotions">العروض الترويجية</TabsTrigger>
-            <TabsTrigger value="codes">أكواد الخصم</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="promotions" className="border rounded-lg">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>اسم العرض</TableHead>
-                  <TableHead>نوع الخصم</TableHead>
-                  <TableHead>قيمة الخصم</TableHead>
-                  <TableHead>تاريخ البدء</TableHead>
-                  <TableHead>تاريخ الانتهاء</TableHead>
-                  <TableHead>الحالة</TableHead>
-                  <TableHead>الإجراءات</TableHead>
+        {/* جدول طلبات الشراء */}
+        <div className="border rounded-lg">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>رقم الطلب</TableHead>
+                <TableHead>المورد</TableHead>
+                <TableHead>التاريخ</TableHead>
+                <TableHead>المنتجات</TableHead>
+                <TableHead>الإجمالي</TableHead>
+                <TableHead>الحالة</TableHead>
+                <TableHead>الإجراءات</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredPurchases?.map((purchase) => (
+                <TableRow key={purchase.id}>
+                  <TableCell>{purchase.id}</TableCell>
+                  <TableCell>{purchase.supplier?.name}</TableCell>
+                  <TableCell>
+                    {format(new Date(purchase.createdAt), 'dd MMMM yyyy', { locale: ar })}
+                  </TableCell>
+                  <TableCell>{purchase.items.length} منتج</TableCell>
+                  <TableCell>{formatCurrency(Number(purchase.totalAmount), true)}</TableCell>
+                  <TableCell>
+                    <Badge
+                      className={
+                        purchase.status === 'completed' ? 'bg-green-100 text-green-800' :
+                        purchase.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }
+                    >
+                      {purchase.status === 'completed' ? 'مكتمل' :
+                       purchase.status === 'pending' ? 'قيد الإنتظار' : 'ملغي'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Button variant="ghost" size="sm">
+                      عرض التفاصيل
+                    </Button>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredPromotions?.map((promotion) => (
-                  <TableRow key={promotion.id}>
-                    <TableCell className="font-medium">
-                      {promotion.name}
-                      {promotion.description && (
-                        <p className="text-sm text-muted-foreground">{promotion.description}</p>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {promotion.discountType === "percentage" ? "نسبة مئوية" : "قيمة ثابتة"}
-                    </TableCell>
-                    <TableCell>
-                      {promotion.discountType === "percentage"
-                        ? `${promotion.discountValue}%`
-                        : `${promotion.discountValue} ريال`}
-                    </TableCell>
-                    <TableCell>
-                      {format(new Date(promotion.startDate), 'dd MMMM yyyy', { locale: ar })}
-                    </TableCell>
-                    <TableCell>
-                      {format(new Date(promotion.endDate), 'dd MMMM yyyy', { locale: ar })}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        className={promotion.status === 'active'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-800'}
-                      >
-                        {promotion.status === 'active' ? 'نشط' : 'غير نشط'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            المزيد
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          <DropdownMenuItem onClick={() => duplicatePromotion.mutate(promotion)}>
-                            <Copy className="h-4 w-4 ml-2" />
-                            نسخ العرض
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => saveAsTemplate.mutate(promotion)}>
-                            <BookTemplate className="h-4 w-4 ml-2" />
-                            حفظ كقالب
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filteredPromotions?.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      لا توجد نتائج للبحث
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TabsContent>
-
-          <TabsContent value="codes" className="border rounded-lg">
-            <Table>
-              <TableHeader>
+              ))}
+              {(!filteredPurchases || filteredPurchases.length === 0) && (
                 <TableRow>
-                  <TableHead>كود الخصم</TableHead>
-                  <TableHead>العرض المرتبط</TableHead>
-                  <TableHead>حد الاستخدام</TableHead>
-                  <TableHead>عدد الاستخدام</TableHead>
-                  <TableHead>تاريخ الانتهاء</TableHead>
-                  <TableHead>الإجراءات</TableHead>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    لا توجد طلبات شراء حالياً
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredDiscountCodes?.map((code) => (
-                  <TableRow key={code.id}>
-                    <TableCell className="font-medium">{code.code}</TableCell>
-                    <TableCell>{code.promotionId}</TableCell>
-                    <TableCell>{code.usageLimit}</TableCell>
-                    <TableCell>{code.usageCount}</TableCell>
-                    <TableCell>
-                      {code.expiresAt
-                        ? format(new Date(code.expiresAt), 'dd MMMM yyyy', { locale: ar })
-                        : 'غير محدد'}
-                    </TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="sm">
-                        تعديل
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filteredDiscountCodes?.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                      لا توجد نتائج للبحث
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TabsContent>
-        </Tabs>
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </div>
     </DashboardLayout>
   );

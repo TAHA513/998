@@ -4,7 +4,13 @@ import { Input } from "@/components/ui/input";
 import { useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import JsBarcode from "jsbarcode";
 import { Printer, Download, RefreshCw, Sheet } from "lucide-react";
@@ -22,25 +28,27 @@ export default function BarcodesPage() {
   const singleBarcodeRef = useRef<SVGSVGElement>(null);
   const bulkBarcodesRef = useRef<HTMLDivElement>(null);
 
+  // دالة لإرجاع إعدادات الباركود المستخدمة في جميع الأماكن
+  const getBarcodeOptions = () => ({
+    format: barcodeFormat,
+    width: Number(barcodeWidth),
+    height: Number(barcodeHeight),
+    displayValue: true,
+    font: "Arial",
+    textAlign: "center",
+    textPosition: "bottom",
+    textMargin: 2,
+    fontSize: 20,
+    background: "#ffffff",
+    lineColor: "#000000",
+    margin: 10,
+  });
+
   const generateBarcode = (value: string, svgElement: SVGSVGElement) => {
     if (!value) return false;
-
     try {
-      JsBarcode(svgElement, value, {
-        format: barcodeFormat,
-        width: Number(barcodeWidth),
-        height: Number(barcodeHeight),
-        displayValue: true,
-        font: "Arial",
-        textAlign: "center",
-        textPosition: "bottom",
-        textMargin: 2,
-        fontSize: 20,
-        background: "#ffffff",
-        lineColor: "#000000",
-        margin: 10,
-      });
-      svgElement.setAttribute('data-value', value);
+      JsBarcode(svgElement, value, getBarcodeOptions());
+      svgElement.setAttribute("data-value", value);
       return true;
     } catch (error) {
       toast({
@@ -60,21 +68,17 @@ export default function BarcodesPage() {
 
   const generateBulkBarcodes = () => {
     if (!bulkBarcodesRef.current) return;
-
-    bulkBarcodesRef.current.innerHTML = '';
-    const values = bulkBarcodes.split('\n').filter(v => v.trim());
-
+    bulkBarcodesRef.current.innerHTML = "";
+    const values = bulkBarcodes.split("\n").filter((v) => v.trim());
     values.forEach((value) => {
-      const container = document.createElement('div');
-      container.className = 'mb-4';
-
+      const container = document.createElement("div");
+      container.className = "mb-4";
       for (let i = 0; i < Number(copies); i++) {
         const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
         if (generateBarcode(value, svg)) {
           container.appendChild(svg);
         }
       }
-
       bulkBarcodesRef.current?.appendChild(container);
     });
   };
@@ -85,8 +89,24 @@ export default function BarcodesPage() {
     }
   }, [bulkBarcodes, barcodeFormat, barcodeWidth, barcodeHeight, copies]);
 
+  // إنشاء سلسلة خيارات الباركود لاستخدامها في نافذة الطباعة
+  const barcodeOptionsScript = `
+    format: "${barcodeFormat}",
+    width: ${barcodeWidth},
+    height: ${barcodeHeight},
+    displayValue: true,
+    font: "Arial",
+    textAlign: "center",
+    textPosition: "bottom",
+    textMargin: 2,
+    fontSize: 20,
+    background: "#ffffff",
+    lineColor: "#000000",
+    margin: 10
+  `;
+
   const printBarcodes = (thermal = false) => {
-    const printWindow = window.open('', '', 'width=800,height=600');
+    const printWindow = window.open("", "", "width=800,height=600");
     if (!printWindow) return;
 
     const content = `
@@ -96,8 +116,8 @@ export default function BarcodesPage() {
           <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
           <style>
             @page { 
-              size: ${thermal ? '58mm 40mm' : 'A4'}; 
-              margin: ${thermal ? '0' : '1cm'}; 
+              size: ${thermal ? "58mm 40mm" : "A4"}; 
+              margin: ${thermal ? "0" : "1cm"}; 
             }
             body { 
               margin: 0; 
@@ -125,7 +145,7 @@ export default function BarcodesPage() {
         </head>
         <body>
           <div class="container">
-            ${singleBarcodeRef.current?.outerHTML || bulkBarcodesRef.current?.innerHTML || ''}
+            ${singleBarcodeRef.current?.outerHTML || bulkBarcodesRef.current?.innerHTML || ""}
           </div>
           <script>
             window.onload = () => {
@@ -133,27 +153,12 @@ export default function BarcodesPage() {
                 if (typeof JsBarcode === 'undefined') {
                   throw new Error('JsBarcode library not loaded');
                 }
-
                 document.querySelectorAll('svg').forEach(svg => {
                   const value = svg.getAttribute('data-value');
                   if (value) {
-                    JsBarcode(svg, value, {
-                      format: "${barcodeFormat}",
-                      width: ${barcodeWidth},
-                      height: ${barcodeHeight},
-                      displayValue: true,
-                      font: "Arial",
-                      textAlign: "center",
-                      textPosition: "bottom",
-                      textMargin: 2,
-                      fontSize: 20,
-                      background: "#ffffff",
-                      lineColor: "#000000",
-                      margin: 10
-                    });
+                    JsBarcode(svg, value, {${barcodeOptionsScript}});
                   }
                 });
-
                 setTimeout(() => {
                   window.print();
                   window.close();
@@ -174,7 +179,8 @@ export default function BarcodesPage() {
   };
 
   const downloadBarcode = () => {
-    const svgData = new XMLSerializer().serializeToString(singleBarcodeRef.current!);
+    if (!singleBarcodeRef.current) return;
+    const svgData = new XMLSerializer().serializeToString(singleBarcodeRef.current);
     const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
     const svgUrl = URL.createObjectURL(svgBlob);
     const downloadLink = document.createElement("a");
@@ -249,7 +255,12 @@ export default function BarcodesPage() {
                   </div>
 
                   <div className="flex gap-2">
-                    <Button onClick={() => generateBarcode(barcodeValue, singleBarcodeRef.current!)}>
+                    <Button
+                      onClick={() =>
+                        singleBarcodeRef.current &&
+                        generateBarcode(barcodeValue, singleBarcodeRef.current)
+                      }
+                    >
                       <RefreshCw className="h-4 w-4 ml-2" />
                       تحديث الباركود
                     </Button>
@@ -295,9 +306,12 @@ export default function BarcodesPage() {
                       </p>
                       <div className="bg-muted/50 p-2 rounded-md mb-2">
                         <code className="text-xs text-muted-foreground block">
-                          # مثال على التنسيق:<br />
-                          123456789 # منتج 1<br />
-                          987654321 # منتج 2<br />
+                          # مثال على التنسيق:
+                          <br />
+                          123456789 # منتج 1
+                          <br />
+                          987654321 # منتج 2
+                          <br />
                           456789123 # منتج 3
                         </code>
                       </div>

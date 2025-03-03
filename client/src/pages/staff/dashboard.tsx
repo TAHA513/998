@@ -9,13 +9,21 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calendar, DollarSign, Package, AlertCircle, Printer, FileDown } from "lucide-react";
+import {
+  Loader2,
+  Calendar,
+  DollarSign,
+  Package,
+  AlertCircle,
+  Printer,
+  FileDown,
+} from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
-import * as XLSX from 'xlsx';
+import * as XLSX from "xlsx";
 
-// Loading skeleton component
+// مكون صف التحميل Skeleton
 const SkeletonRow = () => (
   <TableRow className="animate-pulse">
     {[...Array(6)].map((_, i) => (
@@ -26,13 +34,69 @@ const SkeletonRow = () => (
   </TableRow>
 );
 
+// دالة مساعدة لتنسيق الحالة
+const getStatusDetails = (status: string) => {
+  if (status === "completed")
+    return { label: "مكتمل", className: "bg-green-100 text-green-800" };
+  if (status === "pending")
+    return { label: "معلق", className: "bg-yellow-100 text-yellow-800" };
+  return { label: "ملغي", className: "bg-red-100 text-red-800" };
+};
+
+// مكون جدول عام لإعادة الاستخدام
+type DataTableProps<T> = {
+  headers: string[];
+  data: T[];
+  loading: boolean;
+  noResultsText: string;
+  renderRow: (item: T) => JSX.Element;
+  skeletonCount?: number;
+};
+
+const DataTable = <T extends unknown>({
+  headers,
+  data,
+  loading,
+  noResultsText,
+  renderRow,
+  skeletonCount = 3,
+}: DataTableProps<T>) => (
+  <div className="rounded-md border">
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {headers.map((header, i) => (
+            <TableHead key={i}>{header}</TableHead>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {loading ? (
+          [...Array(skeletonCount)].map((_, i) => <SkeletonRow key={i} />)
+        ) : data.length === 0 ? (
+          <TableRow>
+            <TableCell
+              colSpan={headers.length}
+              className="text-center py-4 text-muted-foreground"
+            >
+              {noResultsText}
+            </TableCell>
+          </TableRow>
+        ) : (
+          data.map((item) => renderRow(item))
+        )}
+      </TableBody>
+    </Table>
+  </div>
+);
+
 export default function StaffDashboard() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const [searchTermSales, setSearchTermSales] = useState("");
   const [searchTermAppointments, setSearchTermAppointments] = useState("");
 
-  // Prefetch data
+  // التحميل المسبق للبيانات
   useEffect(() => {
     queryClient.prefetchQuery({
       queryKey: ["/api/sales/today"],
@@ -59,19 +123,21 @@ export default function StaffDashboard() {
     staleTime: 1000 * 60 * 5,
   });
 
-  // Calculate summary stats
-  const totalSales = todaySales?.reduce((sum: number, sale: any) => sum + Number(sale.amount), 0) || 0;
+  // إحصائيات الملخص
+  const totalSales =
+    todaySales?.reduce((sum: number, sale: any) => sum + Number(sale.amount), 0) ||
+    0;
   const totalAppointments = appointments?.length || 0;
 
-  // Filter functions
+  // دوال التصفية
   const filteredSales = todaySales?.filter((sale: any) => {
     const searchLower = searchTermSales.toLowerCase();
     return (
       sale.id.toString().includes(searchLower) ||
-      (sale.customerName || 'عميل نقدي').toLowerCase().includes(searchLower) ||
+      (sale.customerName || "عميل نقدي").toLowerCase().includes(searchLower) ||
       sale.amount.toString().includes(searchLower)
     );
-  });
+  }) || [];
 
   const filteredAppointments = appointments?.filter((appointment: any) => {
     const searchLower = searchTermAppointments.toLowerCase();
@@ -79,13 +145,12 @@ export default function StaffDashboard() {
       appointment.customerName.toLowerCase().includes(searchLower) ||
       appointment.customerPhone.includes(searchLower)
     );
-  });
+  }) || [];
 
-  // Export functions
+  // دالة تصدير التقرير اليومي
   const exportDailyReport = () => {
     if (!todaySales?.length && !appointments?.length) {
-      // No data to export
-      alert('لا توجد بيانات للتصدير');
+      alert("لا توجد بيانات للتصدير");
       return;
     }
 
@@ -95,12 +160,16 @@ export default function StaffDashboard() {
 
       if (todaySales?.length > 0) {
         const salesData = todaySales.map((sale: any) => ({
-          'رقم الفاتورة': sale.id,
-          'اسم العميل': sale.customerName || 'عميل نقدي',
-          'المبلغ': `${Number(sale.amount).toLocaleString()} د.ع`,
-          'التاريخ': new Date(sale.date).toLocaleString('ar-IQ'),
-          'الحالة': sale.status === 'completed' ? 'مكتمل' :
-                    sale.status === 'pending' ? 'معلق' : 'ملغي'
+          "رقم الفاتورة": sale.id,
+          "اسم العميل": sale.customerName || "عميل نقدي",
+          "المبلغ": `${Number(sale.amount).toLocaleString()} د.ع`,
+          "التاريخ": new Date(sale.date).toLocaleString("ar-IQ"),
+          "الحالة":
+            sale.status === "completed"
+              ? "مكتمل"
+              : sale.status === "pending"
+              ? "معلق"
+              : "ملغي",
         }));
 
         const ws1 = XLSX.utils.json_to_sheet(salesData);
@@ -110,11 +179,15 @@ export default function StaffDashboard() {
 
       if (appointments?.length > 0) {
         const appointmentsData = appointments.map((appointment: any) => ({
-          'وقت الموعد': new Date(appointment.time).toLocaleString('ar-IQ'),
-          'اسم العميل': appointment.customerName,
-          'رقم الهاتف': appointment.customerPhone,
-          'الحالة': appointment.status === 'completed' ? 'مكتمل' :
-                    appointment.status === 'pending' ? 'معلق' : 'ملغي'
+          "وقت الموعد": new Date(appointment.time).toLocaleString("ar-IQ"),
+          "اسم العميل": appointment.customerName,
+          "رقم الهاتف": appointment.customerPhone,
+          "الحالة":
+            appointment.status === "completed"
+              ? "مكتمل"
+              : appointment.status === "pending"
+              ? "معلق"
+              : "ملغي",
         }));
 
         const ws2 = XLSX.utils.json_to_sheet(appointmentsData);
@@ -123,20 +196,20 @@ export default function StaffDashboard() {
       }
 
       if (hasData) {
-        const fileName = `تقرير_يومي_${new Date().toLocaleDateString('ar-IQ')}.xlsx`;
+        const fileName = `تقرير_يومي_${new Date().toLocaleDateString("ar-IQ")}.xlsx`;
         XLSX.writeFile(wb, fileName);
       } else {
-        alert('لا توجد بيانات للتصدير');
+        alert("لا توجد بيانات للتصدير");
       }
     } catch (error) {
-      console.error('خطأ في تصدير التقرير:', error);
-      alert('حدث خطأ أثناء تصدير التقرير');
+      console.error("خطأ في تصدير التقرير:", error);
+      alert("حدث خطأ أثناء تصدير التقرير");
     }
   };
 
-  // Handle invoice printing
+  // دالة طباعة الفاتورة
   const handlePrintInvoice = (invoice: any) => {
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
     printWindow.document.write(`
@@ -164,8 +237,8 @@ export default function StaffDashboard() {
             <p>رقم الفاتورة: #${invoice.id}</p>
           </div>
           <div class="invoice-details">
-            <p>التاريخ: ${new Date(invoice.date).toLocaleDateString('ar-IQ')}</p>
-            <p>العميل: ${invoice.customerName || 'عميل نقدي'}</p>
+            <p>التاريخ: ${new Date(invoice.date).toLocaleDateString("ar-IQ")}</p>
+            <p>العميل: ${invoice.customerName || "عميل نقدي"}</p>
           </div>
           <table class="invoice-table">
             <tr>
@@ -174,14 +247,18 @@ export default function StaffDashboard() {
               <th>السعر</th>
               <th>المجموع</th>
             </tr>
-            ${invoice.items?.map((item: any) => `
+            ${
+              invoice.items?.map(
+                (item: any) => `
               <tr>
                 <td>${item.name}</td>
                 <td>${item.quantity}</td>
                 <td>${item.price} د.ع</td>
                 <td>${item.total} د.ع</td>
               </tr>
-            `).join('') || ''}
+            `
+              ).join('') || ''
+            }
           </table>
           <div class="total">
             <h3>المجموع الكلي: ${Number(invoice.amount).toLocaleString()} د.ع</h3>
@@ -196,7 +273,7 @@ export default function StaffDashboard() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      {/* Header with Quick Actions */}
+      {/* رأس الصفحة والإجراءات السريعة */}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">لوحة تحكم الموظفين</h1>
         <div className="flex gap-3">
@@ -227,7 +304,7 @@ export default function StaffDashboard() {
         </div>
       </div>
 
-      {/* Summary Cards */}
+      {/* بطاقات الملخص */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="p-4">
           <div className="flex items-center gap-4">
@@ -235,8 +312,12 @@ export default function StaffDashboard() {
               <DollarSign className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h3 className="text-sm font-medium text-muted-foreground">إجمالي المبيعات اليوم</h3>
-              <p className="text-2xl font-bold">{totalSales.toLocaleString()} د.ع</p>
+              <h3 className="text-sm font-medium text-muted-foreground">
+                إجمالي المبيعات اليوم
+              </h3>
+              <p className="text-2xl font-bold">
+                {totalSales.toLocaleString()} د.ع
+              </p>
             </div>
           </div>
         </Card>
@@ -247,14 +328,16 @@ export default function StaffDashboard() {
               <Calendar className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h3 className="text-sm font-medium text-muted-foreground">مواعيد اليوم</h3>
+              <h3 className="text-sm font-medium text-muted-foreground">
+                مواعيد اليوم
+              </h3>
               <p className="text-2xl font-bold">{totalAppointments}</p>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* Alert Section */}
+      {/* قسم التنبيهات */}
       {alerts?.length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex items-center gap-2 text-red-700 mb-2">
@@ -269,13 +352,13 @@ export default function StaffDashboard() {
         </div>
       )}
 
-      {/* Today's Sales */}
+      {/* مبيعات اليوم */}
       <Card className="p-4">
         <div className="flex justify-between items-center mb-4">
           <div>
             <h2 className="text-lg font-semibold">مبيعات اليوم</h2>
             <span className="text-muted-foreground text-sm">
-              {new Date().toLocaleDateString('ar-IQ')}
+              {new Date().toLocaleDateString("ar-IQ")}
             </span>
           </div>
           <Button
@@ -287,7 +370,6 @@ export default function StaffDashboard() {
             تصدير التقرير
           </Button>
         </div>
-
         <div className="mb-4">
           <Input
             placeholder="البحث في المبيعات..."
@@ -296,63 +378,51 @@ export default function StaffDashboard() {
             className="max-w-sm"
           />
         </div>
-
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>رقم الفاتورة</TableHead>
-                <TableHead>العميل</TableHead>
-                <TableHead>المبلغ</TableHead>
-                <TableHead>الوقت</TableHead>
-                <TableHead>الحالة</TableHead>
-                <TableHead></TableHead>
+        <DataTable
+          headers={[
+            "رقم الفاتورة",
+            "العميل",
+            "المبلغ",
+            "الوقت",
+            "الحالة",
+            "",
+          ]}
+          data={filteredSales}
+          loading={salesLoading}
+          noResultsText="لا توجد نتائج للبحث"
+          renderRow={(sale: any) => {
+            const { label, className } = getStatusDetails(sale.status);
+            return (
+              <TableRow key={sale.id}>
+                <TableCell>#{sale.id}</TableCell>
+                <TableCell>{sale.customerName || "عميل نقدي"}</TableCell>
+                <TableCell>
+                  {Number(sale.amount).toLocaleString()} د.ع
+                </TableCell>
+                <TableCell>
+                  {new Date(sale.date).toLocaleTimeString("ar-IQ")}
+                </TableCell>
+                <TableCell>
+                  <span className={`px-2 py-1 rounded-full text-sm ${className}`}>
+                    {label}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handlePrintInvoice(sale)}
+                  >
+                    <Printer className="h-4 w-4" />
+                  </Button>
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {salesLoading ? (
-                [...Array(3)].map((_, i) => <SkeletonRow key={i} />)
-              ) : filteredSales?.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
-                    لا توجد نتائج للبحث
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredSales?.map((sale: any) => (
-                  <TableRow key={sale.id}>
-                    <TableCell>#{sale.id}</TableCell>
-                    <TableCell>{sale.customerName || 'عميل نقدي'}</TableCell>
-                    <TableCell>{Number(sale.amount).toLocaleString()} د.ع</TableCell>
-                    <TableCell>{new Date(sale.date).toLocaleTimeString('ar-IQ')}</TableCell>
-                    <TableCell>
-                      <span className={`px-2 py-1 rounded-full text-sm ${
-                        sale.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        sale.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {sale.status === 'completed' ? 'مكتمل' :
-                         sale.status === 'pending' ? 'معلق' : 'ملغي'}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handlePrintInvoice(sale)}
-                      >
-                        <Printer className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+            );
+          }}
+        />
       </Card>
 
-      {/* Today's Appointments */}
+      {/* مواعيد اليوم */}
       <Card className="p-4">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-semibold">مواعيد اليوم</h2>
@@ -364,7 +434,6 @@ export default function StaffDashboard() {
             عرض كل المواعيد
           </Button>
         </div>
-
         <div className="mb-4">
           <Input
             placeholder="البحث في المواعيد..."
@@ -373,48 +442,29 @@ export default function StaffDashboard() {
             className="max-w-sm"
           />
         </div>
-
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>الوقت</TableHead>
-                <TableHead>العميل</TableHead>
-                <TableHead>الهاتف</TableHead>
-                <TableHead>الحالة</TableHead>
+        <DataTable
+          headers={["الوقت", "العميل", "الهاتف", "الحالة"]}
+          data={filteredAppointments}
+          loading={appointmentsLoading}
+          noResultsText="لا توجد نتائج للبحث"
+          renderRow={(appointment: any) => {
+            const { label, className } = getStatusDetails(appointment.status);
+            return (
+              <TableRow key={appointment.id}>
+                <TableCell>
+                  {new Date(appointment.time).toLocaleTimeString("ar-IQ")}
+                </TableCell>
+                <TableCell>{appointment.customerName}</TableCell>
+                <TableCell dir="ltr">{appointment.customerPhone}</TableCell>
+                <TableCell>
+                  <span className={`px-2 py-1 rounded-full text-sm ${className}`}>
+                    {label}
+                  </span>
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {appointmentsLoading ? (
-                [...Array(3)].map((_, i) => <SkeletonRow key={i} />)
-              ) : filteredAppointments?.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center py-4 text-muted-foreground">
-                    لا توجد نتائج للبحث
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredAppointments?.map((appointment: any) => (
-                  <TableRow key={appointment.id}>
-                    <TableCell>{new Date(appointment.time).toLocaleTimeString('ar-IQ')}</TableCell>
-                    <TableCell>{appointment.customerName}</TableCell>
-                    <TableCell dir="ltr">{appointment.customerPhone}</TableCell>
-                    <TableCell>
-                      <span className={`px-2 py-1 rounded-full text-sm ${
-                        appointment.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        appointment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {appointment.status === 'completed' ? 'مكتمل' :
-                         appointment.status === 'pending' ? 'معلق' : 'ملغي'}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+            );
+          }}
+        />
       </Card>
     </div>
   );

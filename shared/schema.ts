@@ -2,6 +2,9 @@ import { pgTable, text, serial, integer, boolean, timestamp, decimal, json } fro
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+/* ====================================================
+   Users & Authentication
+==================================================== */
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
@@ -10,6 +13,18 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
 });
 
+export const insertUserSchema = createInsertSchema(users).pick({
+  username: true,
+  password: true,
+  name: true,
+});
+
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+
+/* ====================================================
+   Customers & Appointments
+==================================================== */
 export const customers = pgTable("customers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -29,6 +44,17 @@ export const appointments = pgTable("appointments", {
   notes: text("notes"),
 });
 
+export const insertCustomerSchema = createInsertSchema(customers);
+export const insertAppointmentSchema = createInsertSchema(appointments);
+
+export type Customer = typeof customers.$inferSelect;
+export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
+export type Appointment = typeof appointments.$inferSelect;
+export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
+
+/* ====================================================
+   Staff & Related Settings
+==================================================== */
 export const staff = pgTable("staff", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
@@ -53,6 +79,26 @@ export const storeSettings = pgTable("store_settings", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+export const insertStaffSchema = createInsertSchema(staff);
+export const insertSettingSchema = createInsertSchema(settings).pick({
+  key: true,
+  value: true,
+});
+export const insertStoreSettingsSchema = createInsertSchema(storeSettings).pick({
+  storeName: true,
+  storeLogo: true,
+});
+
+export type Staff = typeof staff.$inferSelect;
+export type InsertStaff = z.infer<typeof insertStaffSchema>;
+export type Setting = typeof settings.$inferSelect;
+export type InsertSetting = z.infer<typeof insertSettingSchema>;
+export type StoreSetting = typeof storeSettings.$inferSelect;
+export type InsertStoreSetting = z.infer<typeof insertStoreSettingsSchema>;
+
+/* ====================================================
+   Marketing Campaigns & Notifications
+==================================================== */
 export const marketingCampaigns = pgTable("marketing_campaigns", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -111,129 +157,6 @@ export const scheduledPosts = pgTable("scheduled_posts", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const promotions = pgTable("promotions", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  description: text("description"),
-  discountType: text("discount_type").notNull(),
-  discountValue: integer("discount_value").notNull(),
-  startDate: timestamp("start_date").notNull(),
-  endDate: timestamp("end_date").notNull(),
-  status: text("status").notNull().default("active"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-export const discountCodes = pgTable("discount_codes", {
-  id: serial("id").primaryKey(),
-  code: text("code").notNull().unique(),
-  promotionId: integer("promotion_id").notNull(),
-  customerId: integer("customer_id"),
-  usageLimit: integer("usage_limit").notNull().default(1),
-  usageCount: integer("usage_count").notNull().default(0),
-  expiresAt: timestamp("expires_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const socialMediaAccounts = pgTable("social_media_accounts", {
-  id: serial("id").primaryKey(),
-  platform: text("platform").notNull(),
-  username: text("username").notNull(),
-  password: text("password").notNull(),
-  status: text("status").notNull().default("active"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-export const productGroups = pgTable("product_groups", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  description: text("description"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const products = pgTable("products", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  barcode: text("barcode"),
-  type: text("type").notNull(),
-  quantity: decimal("quantity").notNull().default("0"),
-  costPrice: decimal("cost_price").notNull(),
-  sellingPrice: decimal("selling_price").notNull(),
-  groupId: integer("group_id").notNull(),
-  isWeighted: boolean("is_weighted").notNull().default(false),
-  status: text("status").notNull().default("active"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-export const invoices = pgTable("invoices", {
-  id: serial("id").primaryKey(),
-  customerName: text("customer_name"),
-  items: json("items").$type<{
-    productId: number;
-    quantity: number;
-    price: number;
-    total: number;
-  }[]>().notNull(),
-  subtotal: decimal("subtotal").notNull(),
-  discount: decimal("discount").notNull().default("0"),
-  discountAmount: decimal("discount_amount").notNull().default("0"),
-  finalTotal: decimal("final_total").notNull(),
-  note: text("note"),
-  date: timestamp("date").notNull().defaultNow(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-// Installment Sales Tables
-export const installmentPlans = pgTable("installment_plans", {
-  id: serial("id").primaryKey(),
-  invoiceId: integer("invoice_id").notNull(),
-  customerName: text("customer_name").notNull(),
-  phoneNumber: text("phone_number").notNull(),
-  totalAmount: decimal("total_amount").notNull(),
-  downPayment: decimal("down_payment").notNull(),
-  remainingAmount: decimal("remaining_amount").notNull(),
-  numberOfInstallments: integer("number_of_installments").notNull(),
-  installmentAmount: decimal("installment_amount").notNull(),
-  startDate: timestamp("start_date").notNull(),
-  status: text("status").notNull().default("active"),
-  guarantorName: text("guarantor_name"),
-  guarantorPhone: text("guarantor_phone"),
-  identityDocument: text("identity_document").notNull(),
-  notes: text("notes"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-export const installmentPayments = pgTable("installment_payments", {
-  id: serial("id").primaryKey(),
-  planId: integer("plan_id").notNull(),
-  amount: decimal("amount").notNull(),
-  paymentDate: timestamp("payment_date").notNull(),
-  paymentNumber: integer("payment_number").notNull(),
-  status: text("status").notNull().default("paid"),
-  notes: text("notes"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-  name: true,
-});
-
-export const insertCustomerSchema = createInsertSchema(customers);
-export const insertAppointmentSchema = createInsertSchema(appointments);
-export const insertStaffSchema = createInsertSchema(staff);
-export const insertSettingSchema = createInsertSchema(settings).pick({
-  key: true,
-  value: true,
-});
-export const insertStoreSettingsSchema = createInsertSchema(storeSettings).pick({
-  storeName: true,
-  storeLogo: true,
-});
 export const insertMarketingCampaignSchema = createInsertSchema(marketingCampaigns).extend({
   platforms: z.array(z.enum(['facebook', 'instagram', 'snapchat', 'whatsapp', 'email', 'sms'])),
   type: z.enum(['promotional', 'awareness', 'engagement', 'sales', 'seasonal', 'sms']),
@@ -269,19 +192,104 @@ export const insertMarketingCampaignSchema = createInsertSchema(marketingCampaig
     mediaUrls: z.array(z.string()).optional(),
   })).optional(),
 });
+
+export const insertCampaignNotificationSchema = createInsertSchema(campaignNotifications).extend({
+  type: z.enum(['end_date', 'budget_limit', 'engagement_goal']),
+  status: z.enum(['pending', 'sent', 'read']).default('pending'),
+});
+
+export const insertScheduledPostSchema = createInsertSchema(scheduledPosts).extend({
+  platform: z.enum(['facebook', 'instagram', 'snapchat', 'whatsapp', 'email', 'sms']),
+  status: z.enum(['pending', 'published', 'failed']).default('pending'),
+  mediaUrls: z.array(z.string()).optional(),
+});
+
+export type MarketingCampaign = typeof marketingCampaigns.$inferSelect;
+export type InsertMarketingCampaign = z.infer<typeof insertMarketingCampaignSchema>;
+export type CampaignNotification = typeof campaignNotifications.$inferSelect;
+export type InsertCampaignNotification = z.infer<typeof insertCampaignNotificationSchema>;
+export type ScheduledPost = typeof scheduledPosts.$inferSelect;
+export type InsertScheduledPost = z.infer<typeof insertScheduledPostSchema>;
+
+/* ====================================================
+   Promotions & Discount Codes
+==================================================== */
+export const promotions = pgTable("promotions", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  discountType: text("discount_type").notNull(),
+  discountValue: integer("discount_value").notNull(),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const discountCodes = pgTable("discount_codes", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  promotionId: integer("promotion_id").notNull(),
+  customerId: integer("customer_id"),
+  usageLimit: integer("usage_limit").notNull().default(1),
+  usageCount: integer("usage_count").notNull().default(0),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const insertPromotionSchema = createInsertSchema(promotions);
 export const insertDiscountCodeSchema = createInsertSchema(discountCodes);
+
+export type Promotion = typeof promotions.$inferSelect;
+export type InsertPromotion = z.infer<typeof insertPromotionSchema>;
+export type DiscountCode = typeof discountCodes.$inferSelect;
+export type InsertDiscountCode = z.infer<typeof insertDiscountCodeSchema>;
+
+/* ====================================================
+   Social Media & Product Groups
+==================================================== */
+export const socialMediaAccounts = pgTable("social_media_accounts", {
+  id: serial("id").primaryKey(),
+  platform: text("platform").notNull(),
+  username: text("username").notNull(),
+  password: text("password").notNull(),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const productGroups = pgTable("product_groups", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const products = pgTable("products", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  barcode: text("barcode"),
+  type: text("type").notNull(),
+  quantity: decimal("quantity").notNull().default("0"),
+  costPrice: decimal("cost_price").notNull(),
+  sellingPrice: decimal("selling_price").notNull(),
+  groupId: integer("group_id").notNull(),
+  isWeighted: boolean("is_weighted").notNull().default(false),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const insertSocialMediaAccountSchema = createInsertSchema(socialMediaAccounts).pick({
   platform: true,
   username: true,
   password: true,
 });
-
 export const insertProductGroupSchema = createInsertSchema(productGroups).pick({
   name: true,
   description: true,
 });
-
 export const insertProductSchema = createInsertSchema(products).extend({
   barcode: z.string().optional(),
   type: z.enum(["piece", "weight"]),
@@ -290,6 +298,65 @@ export const insertProductSchema = createInsertSchema(products).extend({
   sellingPrice: z.number().min(0),
   groupId: z.number(),
   isWeighted: z.boolean(),
+});
+
+export type SocialMediaAccount = typeof socialMediaAccounts.$inferSelect;
+export type InsertSocialMediaAccount = z.infer<typeof insertSocialMediaAccountSchema>;
+export type ProductGroup = typeof productGroups.$inferSelect;
+export type InsertProductGroup = z.infer<typeof insertProductGroupSchema>;
+export type Product = typeof products.$inferSelect;
+export type InsertProduct = z.infer<typeof insertProductSchema>;
+
+/* ====================================================
+   Invoices & Installment Sales
+==================================================== */
+export const invoices = pgTable("invoices", {
+  id: serial("id").primaryKey(),
+  customerName: text("customer_name"),
+  items: json("items").$type<{
+    productId: number;
+    quantity: number;
+    price: number;
+    total: number;
+  }[]>().notNull(),
+  subtotal: decimal("subtotal").notNull(),
+  discount: decimal("discount").notNull().default("0"),
+  discountAmount: decimal("discount_amount").notNull().default("0"),
+  finalTotal: decimal("final_total").notNull(),
+  note: text("note"),
+  date: timestamp("date").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const installmentPlans = pgTable("installment_plans", {
+  id: serial("id").primaryKey(),
+  invoiceId: integer("invoice_id").notNull(),
+  customerName: text("customer_name").notNull(),
+  phoneNumber: text("phone_number").notNull(),
+  totalAmount: decimal("total_amount").notNull(),
+  downPayment: decimal("down_payment").notNull(),
+  remainingAmount: decimal("remaining_amount").notNull(),
+  numberOfInstallments: integer("number_of_installments").notNull(),
+  installmentAmount: decimal("installment_amount").notNull(),
+  startDate: timestamp("start_date").notNull(),
+  status: text("status").notNull().default("active"),
+  guarantorName: text("guarantor_name"),
+  guarantorPhone: text("guarantor_phone"),
+  identityDocument: text("identity_document").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const installmentPayments = pgTable("installment_payments", {
+  id: serial("id").primaryKey(),
+  planId: integer("plan_id").notNull(),
+  amount: decimal("amount").notNull(),
+  paymentDate: timestamp("payment_date").notNull(),
+  paymentNumber: integer("payment_number").notNull(),
+  status: text("status").notNull().default("paid"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertInvoiceSchema = createInsertSchema(invoices).extend({
@@ -321,54 +388,16 @@ export const insertInstallmentPaymentSchema = createInsertSchema(installmentPaym
   paymentNumber: z.number().min(1),
 });
 
-export const insertCampaignNotificationSchema = createInsertSchema(campaignNotifications).extend({
-  type: z.enum(['end_date', 'budget_limit', 'engagement_goal']),
-  status: z.enum(['pending', 'sent', 'read']).default('pending'),
-});
-
-export const insertScheduledPostSchema = createInsertSchema(scheduledPosts).extend({
-  platform: z.enum(['facebook', 'instagram', 'snapchat', 'whatsapp', 'email', 'sms']),
-  status: z.enum(['pending', 'published', 'failed']).default('pending'),
-  mediaUrls: z.array(z.string()).optional(),
-});
-
-
-export type User = typeof users.$inferSelect;
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type Customer = typeof customers.$inferSelect;
-export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
-export type Appointment = typeof appointments.$inferSelect;
-export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
-export type Staff = typeof staff.$inferSelect;
-export type InsertStaff = z.infer<typeof insertStaffSchema>;
-export type Setting = typeof settings.$inferSelect;
-export type InsertSetting = z.infer<typeof insertSettingSchema>;
-export type StoreSetting = typeof storeSettings.$inferSelect;
-export type InsertStoreSetting = z.infer<typeof insertStoreSettingsSchema>;
-export type MarketingCampaign = typeof marketingCampaigns.$inferSelect;
-export type InsertMarketingCampaign = z.infer<typeof insertMarketingCampaignSchema>;
-export type Promotion = typeof promotions.$inferSelect;
-export type InsertPromotion = z.infer<typeof insertPromotionSchema>;
-export type DiscountCode = typeof discountCodes.$inferSelect;
-export type InsertDiscountCode = z.infer<typeof insertDiscountCodeSchema>;
-export type SocialMediaAccount = typeof socialMediaAccounts.$inferSelect;
-export type InsertSocialMediaAccount = z.infer<typeof insertSocialMediaAccountSchema>;
-export type ProductGroup = typeof productGroups.$inferSelect;
-export type InsertProductGroup = z.infer<typeof insertProductGroupSchema>;
-export type Product = typeof products.$inferSelect;
-export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Invoice = typeof invoices.$inferSelect;
 export type InsertInvoice = z.infer<typeof insertInvoiceSchema>;
 export type InstallmentPlan = typeof installmentPlans.$inferSelect;
 export type InsertInstallmentPlan = z.infer<typeof insertInstallmentPlanSchema>;
 export type InstallmentPayment = typeof installmentPayments.$inferSelect;
 export type InsertInstallmentPayment = z.infer<typeof insertInstallmentPaymentSchema>;
-export type CampaignNotification = typeof campaignNotifications.$inferSelect;
-export type InsertCampaignNotification = z.infer<typeof insertCampaignNotificationSchema>;
-export type ScheduledPost = typeof scheduledPosts.$inferSelect;
-export type InsertScheduledPost = z.infer<typeof insertScheduledPostSchema>;
 
-
+/* ====================================================
+   Suppliers & Purchase Orders / Items
+==================================================== */
 export const suppliers = pgTable("suppliers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -406,7 +435,6 @@ export const purchaseItems = pgTable("purchase_items", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Add Zod schemas for validation
 export const insertSupplierSchema = createInsertSchema(suppliers).extend({
   phoneNumber: z.string().min(10, "رقم الهاتف يجب أن لا يقل عن 10 أرقام"),
   email: z.string().email("البريد الإلكتروني غير صالح").optional().nullable(),
@@ -434,7 +462,6 @@ export const insertPurchaseItemSchema = createInsertSchema(purchaseItems).extend
   totalPrice: z.number().min(0),
 });
 
-// Add type exports
 export type Supplier = typeof suppliers.$inferSelect;
 export type InsertSupplier = z.infer<typeof insertSupplierSchema>;
 export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
@@ -442,6 +469,9 @@ export type InsertPurchaseOrder = z.infer<typeof insertPurchaseOrderSchema>;
 export type PurchaseItem = typeof purchaseItems.$inferSelect;
 export type InsertPurchaseItem = z.infer<typeof insertPurchaseItemSchema>;
 
+/* ====================================================
+   Expenses & Expense Categories
+==================================================== */
 export const expenseCategories = pgTable("expense_categories", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -463,7 +493,6 @@ export const expenses = pgTable("expenses", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-// Add Zod schemas for validation
 export const insertExpenseCategorySchema = createInsertSchema(expenseCategories).extend({
   description: z.string().optional().nullable(),
 });
@@ -480,12 +509,14 @@ export const insertExpenseSchema = createInsertSchema(expenses).extend({
   receiptImage: z.string().optional().nullable(),
 });
 
-// Add type exports
 export type ExpenseCategory = typeof expenseCategories.$inferSelect;
 export type InsertExpenseCategory = z.infer<typeof insertExpenseCategorySchema>;
 export type Expense = typeof expenses.$inferSelect;
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;
 
+/* ====================================================
+   Database Connections
+==================================================== */
 export const databaseConnections = pgTable("database_connections", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -496,7 +527,7 @@ export const databaseConnections = pgTable("database_connections", {
   username: text("username"),
   password: text("password"),
   connectionString: text("connection_string"),
-  // New fields for Google Cloud SQL
+  // حقول إضافية لـ Google Cloud SQL
   projectId: text("project_id"),
   instanceName: text("instance_name"),
   region: text("region"),
@@ -515,7 +546,6 @@ export const insertDatabaseConnectionSchema = createInsertSchema(databaseConnect
   username: z.string().optional(),
   password: z.string().optional(),
   connectionString: z.string().optional(),
-  // Add validation for Google Cloud SQL fields
   projectId: z.string().optional(),
   instanceName: z.string().optional(),
   region: z.string().optional(),

@@ -28,8 +28,7 @@ import { ar } from "date-fns/locale";
 import { formatCurrency } from "@/lib/utils";
 import type { Expense } from "@shared/schema";
 import { motion } from "framer-motion";
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select"
-
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const fadeIn = {
   initial: { opacity: 0, y: 20 },
